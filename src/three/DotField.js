@@ -1,12 +1,11 @@
-export function buildDotField({ layers = 6, spread = 16, step = 1.2 } = {}) {
+export function buildDotField({ layers = 7, spread = 28, step = 1.25, debugMode = false } = {}) {
+  const planeCount = Math.max(1, Math.min(layers, 7))
+  const layerDepths = Array.from({ length: planeCount }, (_, layerIndex) => -(layerIndex + 1) * 8)
   const layerDefinitions = []
 
-  for (let layer = 0; layer < layers; layer += 1) {
-    const depth = -10 - layer * 7
-    const localSpread = spread + layer * 2.6
-    const intensity = 0.3 + (layer / Math.max(layers - 1, 1)) * 0.5
-    const size = 0.05 + layer * 0.01
-    const opacity = Math.max(0.04, 0.3 - layer * 0.04)
+  for (let layerIndex = 0; layerIndex < layerDepths.length; layerIndex += 1) {
+    const depth = layerDepths[layerIndex]
+    const localSpread = spread + layerIndex * 2
     const positions = []
     const colors = []
 
@@ -17,19 +16,20 @@ export function buildDotField({ layers = 6, spread = 16, step = 1.2 } = {}) {
 
         positions.push(x + jitterX, y + jitterY, depth)
 
-        const base = 0.62 + intensity * 0.32
-        colors.push(base, base, base)
+        const baseColor = debugMode ? 0.16 + layerIndex * 0.02 : 0.58 + layerIndex * 0.02
+        colors.push(baseColor, baseColor, baseColor)
       }
     }
 
     layerDefinitions.push({
       positions,
       colors,
-      opacity,
-      size,
+      opacity: debugMode ? 0.8 - layerIndex * 0.08 : layerIndex < 2 ? 0.26 : layerIndex < 4 ? 0.18 : 0.08,
+      size: debugMode ? 0.18 + layerIndex * 0.01 : 0.06 + layerIndex * 0.003,
       depth,
+      layerIndex,
     })
   }
 
-  return { layers: layerDefinitions }
+  return { layers: layerDefinitions, layerDepths }
 }

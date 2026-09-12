@@ -7,6 +7,12 @@ import { applyMotionPreference, initLandingTypewriter } from './utils/animation.
 
 const appRoot = document.querySelector('#app')
 const state = { ...initialState }
+const sceneState = { cameraZ: 0 }
+const viewDepths = {
+  landing: 0,
+  projects: -18,
+  workspace: -30,
+}
 let projects = loadProjects()
 let sceneController = null
 let transitionLocked = false
@@ -15,11 +21,22 @@ let touchStartY = null
 let touchStartTime = 0
 
 function renderApp() {
+  sceneState.cameraZ = sceneController?.getCameraDepth?.() ?? sceneState.cameraZ
   sceneController?.destroy?.()
+
   appRoot.innerHTML = App({ state, projectList: projects })
-  sceneController = initSpatialScene()
+  sceneController = initSpatialScene(sceneState)
   applyMotionPreference()
   initLandingTypewriter()
+
+  const targetDepth = viewDepths[state.view] ?? 0
+
+  if (sceneController && targetDepth !== sceneState.cameraZ) {
+    sceneController.startEntryTransition({
+      targetZ: targetDepth,
+      duration: state.view === 'landing' ? 0 : 1500,
+    })
+  }
 }
 
 function enterProjects() {

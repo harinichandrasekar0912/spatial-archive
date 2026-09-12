@@ -1,27 +1,21 @@
 import * as THREE from 'three'
 
 export function createCameraRig(camera, transitionState = {}) {
-  const desiredPosition = new THREE.Vector3(0, 0, 24)
-  const easeInOutCubic = (value) => {
-    if (value < 0.5) {
-      return 4 * value * value * value
-    }
-
-    return 1 - Math.pow(-2 * value + 2, 3) / 2
-  }
+  const driftTarget = new THREE.Vector3()
 
   return {
-    desiredPosition,
     update(time) {
-      const transitionProgress = transitionState.entryProgress || 0
-      const easedProgress = easeInOutCubic(Math.min(transitionProgress, 1))
+      const driftX = Math.sin(time * 0.42) * (transitionState.isTransitioning ? 1.1 : 0.7)
+      const driftY = Math.cos(time * 0.31) * (transitionState.isTransitioning ? 0.9 : 0.45)
+      const currentDepth = transitionState.currentDepth ?? camera.position.z
 
-      desiredPosition.x = Math.sin(time * (transitionState.isTransitioning ? 0.5 : 0.28)) * (transitionState.isTransitioning ? 1.2 : 0.7)
-      desiredPosition.y = Math.cos(time * (transitionState.isTransitioning ? 0.38 : 0.22)) * (transitionState.isTransitioning ? 0.8 : 0.45)
-      desiredPosition.z = THREE.MathUtils.lerp(24, transitionState.reducedMotion ? 18 : 8, easedProgress)
+      driftTarget.set(driftX, driftY, currentDepth)
 
-      camera.position.lerp(desiredPosition, 0.03)
-      camera.lookAt(0, 0, -10)
+      camera.position.x = THREE.MathUtils.lerp(camera.position.x, driftTarget.x, 0.05)
+      camera.position.y = THREE.MathUtils.lerp(camera.position.y, driftTarget.y, 0.05)
+      camera.position.z = currentDepth
+
+      camera.lookAt(0, 0, -1)
     },
   }
 }

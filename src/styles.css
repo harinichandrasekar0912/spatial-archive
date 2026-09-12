@@ -193,10 +193,11 @@ button {
 .workspace-page {
   position: absolute;
   inset: 0;
+  z-index: 2;
 }
 
 .landing-page {
-  z-index: 1;
+  z-index: 2;
   display: grid;
   place-items: center;
   background: var(--bg);
@@ -247,11 +248,18 @@ button {
 }
 
 .spatial-scene {
-  position: absolute;
+  position: fixed;
   inset: 0;
   z-index: 0;
   overflow: hidden;
   background: transparent;
+  pointer-events: none;
+}
+
+.spatial-canvas {
+  display: block;
+  width: 100vw;
+  height: 100dvh;
 }
 
 .scene-glow {
