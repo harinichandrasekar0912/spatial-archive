@@ -1,4 +1,6 @@
 export const initialState = {
-  activeSection: 'landing',
+  navOpen: false,
+  view: 'landing',
   selectedProjectId: null,
+  createModalOpen: false,
 }

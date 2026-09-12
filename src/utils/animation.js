@@ -42,7 +42,7 @@ export function initLandingTypewriter() {
       index += 1
 
       if (index <= text.length) {
-        window.setTimeout(typeNextCharacter, 55)
+        window.setTimeout(typeNextCharacter, 75)
         return
       }
 

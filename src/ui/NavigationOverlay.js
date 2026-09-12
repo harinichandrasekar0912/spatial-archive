@@ -3,11 +3,6 @@ export function NavigationOverlay({ state = {} } = {}) {
 
   return `
     <header class="topbar">
-      <div class="brand-mark" aria-label="Spatial Archive home">
-        <span class="brand-dot"></span>
-        <span>Spatial Archive</span>
-      </div>
-
       <button
         type="button"
         class="menu-toggle ${isOpen ? 'is-open' : ''}"
@@ -23,9 +18,9 @@ export function NavigationOverlay({ state = {} } = {}) {
 
     <div id="nav-overlay" class="nav-overlay ${isOpen ? 'is-open' : ''}" aria-hidden="${isOpen ? 'false' : 'true'}">
       <nav class="overlay-nav" aria-label="Main navigation">
-        <a href="#projects">PROJECTS</a>
-        <a href="#how-it-works">HOW IT WORKS</a>
-        <a href="#about">ABOUT</a>
+        <button type="button" class="nav-link" data-action="create">CREATE</button>
+        <button type="button" class="nav-link" data-action="projects">PROJECTS</button>
+        <button type="button" class="nav-link" data-action="about">ABOUT</button>
       </nav>
     </div>
   `

@@ -1,28 +1,17 @@
 import { ProjectCard } from './ProjectCard.js'
 
 export function ProjectsPage({ projects = [] }) {
-  const archiveCards = [
-    {
-      id: 'luxury-apartment',
-      name: 'LUXURY APARTMENT',
-      tag: '24 OBJECTS',
-      description: 'Placeholder project entry for the current Spatial Archive phase.',
-      year: 'CURRENT',
-      accent: 'neutral',
-      type: 'existing',
-    },
-    {
-      id: 'new-archive',
-      name: 'NEW ARCHIVE',
-      tag: 'ADD OBJECT',
-      description: 'Reserve location for the next spatial archive entry.',
-      year: 'UPCOMING',
-      accent: 'neutral',
-      type: 'new',
-    },
-  ]
+  const createCard = {
+    id: 'create-project',
+    name: 'CREATE',
+    tag: 'NEW',
+    description: '',
+    year: '',
+    accent: 'neutral',
+    type: 'create',
+  }
 
-  const content = projects.length ? projects : archiveCards
+  const content = [createCard, ...projects]
 
   return `
     <section id="projects" class="projects-page">

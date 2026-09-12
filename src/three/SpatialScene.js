@@ -47,23 +47,26 @@ export function initSpatialScene() {
     reducedMotion,
   }
 
-  const { positions, colors } = buildDotField()
+  const { layers } = buildDotField()
+  const layerMeshes = layers.map(({ positions, colors, opacity, size }) => {
+    const geometry = new THREE.BufferGeometry()
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+    geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3))
 
-  const geometry = new THREE.BufferGeometry()
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
-  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3))
+    const material = new THREE.PointsMaterial({
+      size,
+      transparent: true,
+      opacity,
+      vertexColors: true,
+      depthWrite: false,
+      sizeAttenuation: true,
+    })
 
-  const material = new THREE.PointsMaterial({
-    size: 0.08,
-    transparent: true,
-    opacity: 0.8,
-    vertexColors: true,
-    depthWrite: false,
-    sizeAttenuation: true,
+    const dots = new THREE.Points(geometry, material)
+    scene.add(dots)
+
+    return { geometry, material, dots }
   })
-
-  const dotField = new THREE.Points(geometry, material)
-  scene.add(dotField)
 
   const cameraRig = createCameraRig(camera, transitionState)
   const clock = new THREE.Clock()
@@ -93,8 +96,11 @@ export function initSpatialScene() {
         cancelAnimationFrame(animationFrameId)
       }
 
-      geometry.dispose()
-      material.dispose()
+      layerMeshes.forEach(({ geometry, material }) => {
+        geometry.dispose()
+        material.dispose()
+      })
+
       renderer.dispose()
     },
   }
