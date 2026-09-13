@@ -20,13 +20,64 @@ let transitionLocked = false
 let wheelLockUntil = 0
 let touchStartY = null
 let touchStartTime = 0
+let transitionProgress = 0
+let transitionDirection = 1
+let landingIntroPlayed = false
+
+function applyProjectsVisualProgress() {
+  const projectSection = appRoot.querySelector('.projects-page')
+
+  if (!projectSection) {
+    return
+  }
+
+  const rootProgress = clampTransitionProgress(transitionProgress)
+  const progressValue = transitionDirection > 0 ? rootProgress : 1 - rootProgress
+  const scale = 0.12 + progressValue * 0.88
+  const opacity = 0.12 + progressValue * 0.88
+
+  projectSection.style.setProperty('--projects-progress', rootProgress.toFixed(3))
+  projectSection.style.setProperty('--project-scale', scale.toFixed(3))
+  projectSection.style.setProperty('--project-opacity', opacity.toFixed(3))
+}
+
+function clampTransitionProgress(value) {
+  return Math.max(0, Math.min(1, value))
+}
+
+function syncLandingTagline() {
+  const elements = document.querySelectorAll('[data-typewriter-text]')
+
+  elements.forEach((element) => {
+    const text = element.dataset.typewriterText || ''
+    const caret = element.nextElementSibling
+
+    if (!text) {
+      return
+    }
+
+    element.textContent = text
+
+    if (caret) {
+      caret.classList.add('is-visible', 'is-finished')
+    }
+  })
+}
 
 function renderApp() {
   sceneState.cameraZ = sceneController?.getCameraDepth?.() ?? sceneState.cameraZ
 
   appRoot.innerHTML = App({ state, projectList: projects })
   applyMotionPreference()
-  initLandingTypewriter()
+
+  if (!landingIntroPlayed) {
+    initLandingTypewriter()
+    landingIntroPlayed = true
+  } else if (state.view === 'landing') {
+    syncLandingTagline()
+  }
+
+  applyProjectsVisualProgress()
 
   const targetDepth = viewDepths[state.view] ?? 0
 
@@ -34,6 +85,10 @@ function renderApp() {
     sceneController.startEntryTransition({
       targetZ: targetDepth,
       duration: state.view === 'landing' ? 0 : 1500,
+      onProgress: (progress) => {
+        transitionProgress = progress
+        applyProjectsVisualProgress()
+      },
     })
   }
 }
@@ -44,9 +99,28 @@ function enterProjects() {
   }
 
   transitionLocked = true
-  state.navOpen = false
-  state.view = 'projects'
   state.createModalOpen = false
+  state.view = 'projects'
+  transitionDirection = 1
+  transitionProgress = 0
+
+  renderApp()
+
+  window.setTimeout(() => {
+    transitionLocked = false
+  }, 1200)
+}
+
+function returnToLanding() {
+  if (transitionLocked || state.view === 'landing') {
+    return
+  }
+
+  transitionLocked = true
+  state.createModalOpen = false
+  state.view = 'landing'
+  transitionDirection = -1
+  transitionProgress = 0
 
   renderApp()
 
@@ -57,7 +131,6 @@ function enterProjects() {
 
 function openCreateModal() {
   state.createModalOpen = true
-  state.navOpen = false
   renderApp()
 }
 
@@ -72,7 +145,6 @@ function openWorkspace(projectId) {
   }
 
   transitionLocked = true
-  state.navOpen = false
   state.selectedProjectId = projectId
   state.view = 'workspace'
   state.createModalOpen = false
@@ -87,35 +159,6 @@ function openWorkspace(projectId) {
 renderApp()
 
 appRoot.addEventListener('click', (event) => {
-  const menuToggle = event.target.closest('.menu-toggle')
-
-  if (menuToggle) {
-    state.navOpen = !state.navOpen
-    renderApp()
-    return
-  }
-
-  const navLink = event.target.closest('.nav-link')
-
-  if (navLink) {
-    const action = navLink.dataset.action
-
-    if (action === 'projects') {
-      enterProjects()
-      return
-    }
-
-    if (action === 'create') {
-      openCreateModal()
-      return
-    }
-
-    state.navOpen = false
-    state.view = 'landing'
-    renderApp()
-    return
-  }
-
   const closeModalButton = event.target.closest('[data-action="close-create-modal"]')
 
   if (closeModalButton) {
@@ -178,11 +221,6 @@ appRoot.addEventListener('keydown', (event) => {
       return
     }
 
-    if (state.navOpen) {
-      state.navOpen = false
-      renderApp()
-    }
-
     return
   }
 
@@ -205,17 +243,22 @@ appRoot.addEventListener('keydown', (event) => {
 window.addEventListener(
   'wheel',
   (event) => {
-    if (state.view !== 'landing' || transitionLocked) {
+    if (transitionLocked) {
       return
     }
 
-    if (Math.abs(event.deltaY) < 45 || Date.now() < wheelLockUntil) {
+    if (state.view === 'landing' && event.deltaY > 45 && Date.now() >= wheelLockUntil) {
+      event.preventDefault()
+      wheelLockUntil = Date.now() + 1200
+      enterProjects()
       return
     }
 
-    event.preventDefault()
-    wheelLockUntil = Date.now() + 1200
-    enterProjects()
+    if (state.view === 'projects' && event.deltaY < -45 && Date.now() >= wheelLockUntil) {
+      event.preventDefault()
+      wheelLockUntil = Date.now() + 1200
+      returnToLanding()
+    }
   },
   { passive: false },
 )
@@ -223,7 +266,7 @@ window.addEventListener(
 document.addEventListener(
   'touchstart',
   (event) => {
-    if (state.view !== 'landing') {
+    if (transitionLocked) {
       return
     }
 
@@ -237,17 +280,24 @@ document.addEventListener(
 document.addEventListener(
   'touchmove',
   (event) => {
-    if (state.view !== 'landing' || touchStartY === null || transitionLocked) {
+    if (touchStartY === null || transitionLocked) {
       return
     }
 
     const touch = event.touches[0]
     const deltaY = touchStartY - touch.clientY
 
-    if (deltaY > 60 && Date.now() - touchStartTime > 120) {
+    if (state.view === 'landing' && deltaY > 60 && Date.now() - touchStartTime > 120) {
       event.preventDefault()
       touchStartY = null
       enterProjects()
+      return
+    }
+
+    if (state.view === 'projects' && deltaY < -60 && Date.now() - touchStartTime > 120) {
+      event.preventDefault()
+      touchStartY = null
+      returnToLanding()
     }
   },
   { passive: false },

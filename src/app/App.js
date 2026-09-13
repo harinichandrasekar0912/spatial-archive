@@ -1,5 +1,4 @@
 import { LandingPage } from '../ui/LandingPage.js'
-import { NavigationOverlay } from '../ui/NavigationOverlay.js'
 import { ProjectsPage } from '../ui/ProjectsPage.js'
 import { WorkspacePage } from '../ui/WorkspacePage.js'
 import { CreateProjectModal } from '../ui/CreateProjectModal.js'
@@ -14,8 +13,6 @@ export function App({ state = initialState, projectList = loadProjects() } = {})
 
   return `
     <div class="app-shell ${isProjectsView ? 'is-projects-view' : ''} ${isWorkspaceView ? 'is-workspace-view' : ''} ${isCreateOpen ? 'is-create-modal-open' : ''}">
-      ${NavigationOverlay({ state })}
-
       <main class="page-shell">
         ${LandingPage({ state })}
         ${ProjectsPage({ projects: projectList })}

@@ -77,6 +77,7 @@ export function initSpatialScene(root = document.querySelector('#spatial-root'),
     targetDepth: startDepth,
     startTime: 0,
     duration: reducedMotion ? 900 : 1500,
+    onProgress: null,
   }
   const introState = {
     startedAt: performance.now(),
@@ -134,7 +135,7 @@ export function initSpatialScene(root = document.querySelector('#spatial-root'),
     getCameraDepth() {
       return camera.position.z
     },
-    startEntryTransition({ targetZ = transitionState.targetDepth, duration = transitionState.duration } = {}) {
+    startEntryTransition({ targetZ = transitionState.targetDepth, duration = transitionState.duration, onProgress } = {}) {
       const nextTarget = Number(targetZ)
 
       if (!Number.isFinite(nextTarget) || Math.abs(camera.position.z - nextTarget) < 0.05) {
@@ -145,6 +146,7 @@ export function initSpatialScene(root = document.querySelector('#spatial-root'),
       transitionState.targetDepth = nextTarget
       transitionState.startTime = performance.now()
       transitionState.duration = Math.max(500, Number(duration) || transitionState.duration)
+      transitionState.onProgress = typeof onProgress === 'function' ? onProgress : null
       transitionState.isTransitioning = true
     },
     destroy() {
@@ -177,10 +179,12 @@ export function initSpatialScene(root = document.querySelector('#spatial-root'),
 
       transitionState.currentDepth = THREE.MathUtils.lerp(transitionState.fromDepth, transitionState.targetDepth, eased)
       camera.position.z = transitionState.currentDepth
+      transitionState.onProgress?.(progress)
 
       if (progress >= 1) {
         transitionState.isTransitioning = false
         transitionState.currentDepth = transitionState.targetDepth
+        transitionState.onProgress?.(1)
       }
     }
 
