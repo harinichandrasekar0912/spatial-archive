@@ -6,6 +6,7 @@ import { initSpatialScene } from './three/SpatialScene.js'
 import { applyMotionPreference, initLandingTypewriter } from './utils/animation.js'
 
 const appRoot = document.querySelector('#app')
+const spatialRoot = document.querySelector('#spatial-root')
 const state = { ...initialState }
 const sceneState = { cameraZ: 0 }
 const viewDepths = {
@@ -14,7 +15,7 @@ const viewDepths = {
   workspace: -30,
 }
 let projects = loadProjects()
-let sceneController = null
+let sceneController = initSpatialScene(spatialRoot, sceneState)
 let transitionLocked = false
 let wheelLockUntil = 0
 let touchStartY = null
@@ -22,10 +23,8 @@ let touchStartTime = 0
 
 function renderApp() {
   sceneState.cameraZ = sceneController?.getCameraDepth?.() ?? sceneState.cameraZ
-  sceneController?.destroy?.()
 
   appRoot.innerHTML = App({ state, projectList: projects })
-  sceneController = initSpatialScene(sceneState)
   applyMotionPreference()
   initLandingTypewriter()
 

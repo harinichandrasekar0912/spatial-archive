@@ -11,10 +11,7 @@ export function buildDotField({ layers = 7, spread = 28, step = 1.25, debugMode 
 
     for (let x = -localSpread; x <= localSpread; x += step) {
       for (let y = -localSpread; y <= localSpread; y += step) {
-        const jitterX = (Math.random() - 0.5) * 0.22
-        const jitterY = (Math.random() - 0.5) * 0.22
-
-        positions.push(x + jitterX, y + jitterY, depth)
+        positions.push(x, y, depth)
 
         const baseColor = debugMode ? 0.16 + layerIndex * 0.02 : 0.58 + layerIndex * 0.02
         colors.push(baseColor, baseColor, baseColor)

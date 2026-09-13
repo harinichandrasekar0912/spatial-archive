@@ -22,8 +22,8 @@ function easeInOutCubic(value) {
   return 1 - Math.pow(-2 * value + 2, 3) / 2
 }
 
-export function initSpatialScene(sceneState = {}) {
-  const mount = document.querySelector('[data-spatial-scene]')
+export function initSpatialScene(root = document.querySelector('#spatial-root'), sceneState = {}) {
+  const mount = root
 
   if (!mount || mount.dataset.initialized === 'true') {
     return null

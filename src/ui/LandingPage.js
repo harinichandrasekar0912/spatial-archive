@@ -1,5 +1,3 @@
-import { SpatialScene } from '../three/SpatialScene.js'
-
 export function LandingPage() {
   return `
     <section id="landing" class="landing-page">
@@ -9,7 +7,6 @@ export function LandingPage() {
           <span class="typewriter-caret" aria-hidden="true"></span>
         </p>
       </div>
-      ${SpatialScene()}
     </section>
   `
 }
