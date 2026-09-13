@@ -3,6 +3,7 @@ import { NavigationOverlay } from '../ui/NavigationOverlay.js'
 import { ProjectsPage } from '../ui/ProjectsPage.js'
 import { WorkspacePage } from '../ui/WorkspacePage.js'
 import { CreateProjectModal } from '../ui/CreateProjectModal.js'
+import { SpatialScene } from '../three/SpatialScene.js'
 import { initialState } from './state.js'
 import { loadProjects } from '../data/projects.js'
 
@@ -14,12 +15,16 @@ export function App({ state = initialState, projectList = loadProjects() } = {})
 
   return `
     <div class="app-shell ${isProjectsView ? 'is-projects-view' : ''} ${isWorkspaceView ? 'is-workspace-view' : ''} ${isCreateOpen ? 'is-create-modal-open' : ''}">
+      ${SpatialScene()}
+
       ${NavigationOverlay({ state })}
+
       <main class="page-shell">
         ${LandingPage({ state })}
         ${ProjectsPage({ projects: projectList })}
         ${WorkspacePage({ project: selectedProject })}
       </main>
+
       ${CreateProjectModal({ state })}
     </div>
   `

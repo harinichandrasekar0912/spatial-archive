@@ -31,7 +31,7 @@ export function initSpatialScene(sceneState = {}) {
 
   mount.dataset.initialized = 'true'
 
-  const debugMode = Boolean(window.__SPATIAL_DEBUG__ === true)
+  const debugMode = true
   const canvas = document.createElement('canvas')
   canvas.className = 'spatial-canvas'
   mount.appendChild(canvas)
@@ -48,7 +48,7 @@ export function initSpatialScene(sceneState = {}) {
   renderer.outputColorSpace = THREE.SRGBColorSpace
 
   const scene = new THREE.Scene()
-  scene.fog = new THREE.Fog(0xf5f4f0, 24, 120)
+  scene.fog = null
 
   const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 200)
   const startDepth = Number(sceneState.cameraZ ?? 0)
@@ -195,10 +195,11 @@ export function initSpatialScene(sceneState = {}) {
 
   animate()
 
-  console.info('SpatialScene ready', {
-    dotPlanes: layerDepths.length,
-    cameraZ: startDepth,
-    debugMode,
+  console.log('SPATIAL SCENE MOUNTED', {
+    mount,
+    canvas,
+    cameraZ: camera.position.z,
+    planes: layerMeshes.length,
   })
 
   return controller

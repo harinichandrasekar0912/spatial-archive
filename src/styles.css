@@ -200,7 +200,7 @@ button {
   z-index: 2;
   display: grid;
   place-items: center;
-  background: var(--bg);
+  background: transparent;
   transition: opacity 260ms ease, transform 260ms ease;
 }
 
