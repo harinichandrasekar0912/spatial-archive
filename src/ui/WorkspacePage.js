@@ -3,7 +3,11 @@ export function WorkspacePage({ project = null }) {
     return `
       <section class="workspace-page" aria-live="polite">
         <div class="workspace-shell">
-          <div class="workspace-empty" aria-label="Empty workspace"></div>
+          <div class="workspace-empty" aria-label="Empty workspace">
+            <p class="eyebrow">WORKSPACE</p>
+            <h2>Empty workspace</h2>
+            <p>Select a project to begin building the next archive layer.</p>
+          </div>
         </div>
       </section>
     `

@@ -270,7 +270,13 @@ button {
 }
 
 .scene-glow {
-  display: none;
+  position: absolute;
+  inset: -8%;
+  display: block;
+  background: radial-gradient(circle at center, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0) 52%);
+  filter: blur(28px);
+  opacity: 0.85;
+  pointer-events: none;
 }
 
 .dot-field {
@@ -449,6 +455,37 @@ button {
   align-items: center;
   justify-content: center;
   z-index: 3;
+}
+
+.workspace-empty {
+  width: min(640px, calc(100vw - 4rem));
+  padding: clamp(1.5rem, 3vw, 2.2rem);
+  border-radius: 22px;
+  background: rgba(233, 230, 222, 0.76);
+  box-shadow: 0 14px 28px var(--shadow-soft);
+  backdrop-filter: blur(6px);
+}
+
+.workspace-empty .eyebrow {
+  margin: 0;
+  color: rgba(41, 41, 41, 0.58);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.workspace-empty h2 {
+  margin: 0.5rem 0 0.25rem;
+  font-size: clamp(2rem, 3vw, 3rem);
+  letter-spacing: -0.06em;
+  font-weight: 500;
+}
+
+.workspace-empty p {
+  margin: 0;
+  color: rgba(41, 41, 41, 0.72);
+  line-height: 1.55;
 }
 
 .workspace-shell {

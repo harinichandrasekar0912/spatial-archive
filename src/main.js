@@ -12,7 +12,7 @@ const sceneState = { cameraZ: 0 }
 const viewDepths = {
   landing: 0,
   projects: -18,
-  workspace: -30,
+  workspace: -42,
 }
 let projects = loadProjects()
 let sceneController = initSpatialScene(spatialRoot, sceneState)

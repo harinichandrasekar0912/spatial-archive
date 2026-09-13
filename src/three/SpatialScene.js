@@ -31,10 +31,21 @@ export function initSpatialScene(root = document.querySelector('#spatial-root'),
 
   mount.dataset.initialized = 'true'
 
-  const debugMode = true
+  const debugMode = false
+
+  const sceneShell = document.createElement('div')
+  sceneShell.className = 'spatial-scene'
+  sceneShell.dataset.spatialScene = 'true'
+  sceneShell.setAttribute('aria-label', 'Spatial archive scene')
+
+  const sceneGlow = document.createElement('div')
+  sceneGlow.className = 'scene-glow'
+
   const canvas = document.createElement('canvas')
   canvas.className = 'spatial-canvas'
-  mount.appendChild(canvas)
+
+  sceneShell.append(sceneGlow, canvas)
+  mount.appendChild(sceneShell)
 
   const renderer = new THREE.WebGLRenderer({
     canvas,
@@ -46,6 +57,8 @@ export function initSpatialScene(root = document.querySelector('#spatial-root'),
   renderer.setClearColor(0x000000, 0)
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
   renderer.outputColorSpace = THREE.SRGBColorSpace
+  renderer.toneMapping = THREE.ACESFilmicToneMapping
+  renderer.toneMappingExposure = 1.12
 
   const scene = new THREE.Scene()
   scene.fog = null
@@ -65,35 +78,42 @@ export function initSpatialScene(root = document.querySelector('#spatial-root'),
     startTime: 0,
     duration: reducedMotion ? 900 : 1500,
   }
+  const introState = {
+    startedAt: performance.now(),
+    duration: reducedMotion ? 420 : 1100,
+  }
 
-  const { layers, layerDepths } = buildDotField({ layers: 7, debugMode })
-  const layeringSpacing = 8
-  const layerMeshes = layers.map(({ positions, colors, opacity, size, depth: localDepth }) => {
-    const geometry = new THREE.BufferGeometry()
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
-    geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3))
+  const { layers } = buildDotField({ layers: 8, debugMode })
+  const layeringSpacing = 10
+  const layerMeshes = layers
+    .map(({ positions, colors, opacity, size, depth: localDepth }) => {
+      const geometry = new THREE.BufferGeometry()
+      geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+      geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3))
 
-    const material = new THREE.PointsMaterial({
-      size,
-      transparent: true,
-      opacity,
-      vertexColors: true,
-      depthWrite: false,
-      sizeAttenuation: true,
+      const material = new THREE.PointsMaterial({
+        size,
+        transparent: true,
+        opacity,
+        vertexColors: true,
+        depthWrite: false,
+        sizeAttenuation: true,
+      })
+
+      const dots = new THREE.Points(geometry, material)
+      dots.position.z = localDepth
+      scene.add(dots)
+
+      return {
+        geometry,
+        material,
+        dots,
+        depth: localDepth,
+        baseOpacity: opacity,
+        baseSize: size,
+      }
     })
-
-    const dots = new THREE.Points(geometry, material)
-    dots.position.z = localDepth - localDepth
-    scene.add(dots)
-
-    return {
-      geometry,
-      material,
-      dots,
-      localDepth,
-      depth: localDepth,
-    }
-  })
+    .sort((a, b) => a.depth - b.depth)
 
   const cameraRig = createCameraRig(camera, transitionState)
   const clock = new THREE.Clock()
@@ -108,17 +128,6 @@ export function initSpatialScene(root = document.querySelector('#spatial-root'),
   }
 
   let controller
-
-  const handleDebugTravel = (event) => {
-    if (event.key?.toLowerCase() !== 't') {
-      return
-    }
-
-    controller?.startEntryTransition({
-      targetZ: camera.position.z - 16,
-      duration: reducedMotion ? 800 : 1500,
-    })
-  }
 
   controller = {
     getCameraDepth() {
@@ -139,7 +148,6 @@ export function initSpatialScene(root = document.querySelector('#spatial-root'),
     },
     destroy() {
       window.removeEventListener('resize', resize)
-      document.removeEventListener('keydown', handleDebugTravel)
 
       if (animationFrameId !== null) {
         cancelAnimationFrame(animationFrameId)
@@ -157,7 +165,6 @@ export function initSpatialScene(root = document.querySelector('#spatial-root'),
 
   resize()
   window.addEventListener('resize', resize)
-  document.addEventListener('keydown', handleDebugTravel)
 
   const animate = () => {
     const elapsed = clock.getElapsedTime()
@@ -176,16 +183,31 @@ export function initSpatialScene(root = document.querySelector('#spatial-root'),
       }
     }
 
-    const farthestDepth = Math.min(...layerMeshes.map((layer) => layer.depth))
+    const orderedLayers = [...layerMeshes].sort((a, b) => a.depth - b.depth)
+    const farthestDepth = orderedLayers[0]?.depth ?? 0
+    const shiftThreshold = camera.position.z + 6
+    let nextDepth = farthestDepth - layeringSpacing
 
-    layerMeshes.forEach((layer) => {
-      if (layer.depth > camera.position.z + 4) {
-        const nextDepth = farthestDepth - layeringSpacing
+    const introProgress = clamp((performance.now() - introState.startedAt) / introState.duration, 0, 1)
+    const introFade = easeInOutCubic(introProgress)
 
+    for (let index = orderedLayers.length - 1; index >= 0; index -= 1) {
+      const layer = orderedLayers[index]
+
+      if (layer.depth > shiftThreshold) {
         layer.depth = nextDepth
-        layer.dots.position.z = layer.depth - layer.localDepth
+        layer.dots.position.z = nextDepth
+        nextDepth -= layeringSpacing
       }
-    })
+
+      const distanceFromCamera = Math.max(0.01, Math.abs(layer.depth - camera.position.z))
+      const normalizedDistance = clamp(distanceFromCamera / 56, 0, 1)
+      const depthFade = 1 - normalizedDistance * 0.8
+      const fadeStrength = reducedMotion ? 1 : introFade
+
+      layer.material.opacity = clamp(layer.baseOpacity * depthFade * fadeStrength, 0.02, layer.baseOpacity)
+      layer.material.size = layer.baseSize * (0.86 + (1 - normalizedDistance) * 0.34) * (0.7 + fadeStrength * 0.3)
+    }
 
     cameraRig.update(elapsed)
     renderer.render(scene, camera)
@@ -194,13 +216,6 @@ export function initSpatialScene(root = document.querySelector('#spatial-root'),
   }
 
   animate()
-
-  console.log('SPATIAL SCENE MOUNTED', {
-    mount,
-    canvas,
-    cameraZ: camera.position.z,
-    planes: layerMeshes.length,
-  })
 
   return controller
 }
