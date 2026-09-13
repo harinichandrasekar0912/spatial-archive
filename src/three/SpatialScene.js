@@ -78,6 +78,17 @@ export function initSpatialScene(root = document.querySelector('#spatial-root'),
     startTime: 0,
     duration: reducedMotion ? 900 : 1500,
     onProgress: null,
+    onComplete: null,
+    targetYaw: 0,
+    targetPitch: 0,
+    ambientStrength: 1,
+    ambientStrengthTarget: 1,
+    maxYaw: 0.012,
+    maxPitch: 0.002,
+    ambientSpeed: 0.38,
+    ambientPitchSpeed: 0.22,
+    recenterDuration: reducedMotion ? 260 : 600,
+    microSettle: reducedMotion ? 30 : 100,
   }
   const introState = {
     startedAt: performance.now(),
@@ -135,18 +146,24 @@ export function initSpatialScene(root = document.querySelector('#spatial-root'),
     getCameraDepth() {
       return camera.position.z
     },
-    startEntryTransition({ targetZ = transitionState.targetDepth, duration = transitionState.duration, onProgress } = {}) {
+    startEntryTransition({ targetZ = transitionState.targetDepth, duration = transitionState.duration, onProgress, onComplete } = {}) {
       const nextTarget = Number(targetZ)
 
-      if (!Number.isFinite(nextTarget) || Math.abs(camera.position.z - nextTarget) < 0.05) {
+      if (!Number.isFinite(nextTarget)) {
         return
       }
 
       transitionState.fromDepth = camera.position.z
       transitionState.targetDepth = nextTarget
+      transitionState.targetYaw = 0
+      transitionState.targetPitch = 0
       transitionState.startTime = performance.now()
       transitionState.duration = Math.max(500, Number(duration) || transitionState.duration)
       transitionState.onProgress = typeof onProgress === 'function' ? onProgress : null
+      transitionState.onComplete = typeof onComplete === 'function' ? onComplete : null
+      transitionState.recenterDuration = transitionState.reducedMotion ? 260 : 600
+      transitionState.microSettle = transitionState.reducedMotion ? 30 : 100
+      transitionState.ambientStrengthTarget = nextTarget >= 0 ? 1 : 0
       transitionState.isTransitioning = true
     },
     destroy() {
@@ -173,18 +190,39 @@ export function initSpatialScene(root = document.querySelector('#spatial-root'),
     const elapsed = clock.getElapsedTime()
 
     if (transitionState.isTransitioning) {
-      const elapsedMs = performance.now() - transitionState.startTime
-      const progress = clamp(elapsedMs / transitionState.duration, 0, 1)
-      const eased = easeInOutCubic(progress)
+      const now = performance.now()
+      const totalTransitionDuration = transitionState.duration + transitionState.recenterDuration + transitionState.microSettle
+      const overallProgress = clamp((now - transitionState.startTime) / totalTransitionDuration, 0, 1)
+      const recenterEndTime = transitionState.startTime + transitionState.recenterDuration
+      const travelStartTime = recenterEndTime + transitionState.microSettle
+      const travelProgress = clamp((now - travelStartTime) / transitionState.duration, 0, 1)
 
-      transitionState.currentDepth = THREE.MathUtils.lerp(transitionState.fromDepth, transitionState.targetDepth, eased)
+      if (transitionState.targetDepth >= 0 && now >= travelStartTime + transitionState.duration) {
+        transitionState.ambientStrengthTarget = 1
+      }
+
+      transitionState.ambientStrength = THREE.MathUtils.lerp(
+        transitionState.ambientStrength,
+        transitionState.ambientStrengthTarget,
+        0.06,
+      )
+
+      if (now < travelStartTime) {
+        transitionState.currentDepth = transitionState.fromDepth
+      } else {
+        const eased = easeInOutCubic(travelProgress)
+        transitionState.currentDepth = THREE.MathUtils.lerp(transitionState.fromDepth, transitionState.targetDepth, eased)
+      }
+
       camera.position.z = transitionState.currentDepth
-      transitionState.onProgress?.(progress)
+      transitionState.onProgress?.(overallProgress)
 
-      if (progress >= 1) {
+      if (overallProgress >= 1) {
         transitionState.isTransitioning = false
         transitionState.currentDepth = transitionState.targetDepth
+        transitionState.ambientStrength = transitionState.ambientStrengthTarget
         transitionState.onProgress?.(1)
+        transitionState.onComplete?.()
       }
     }
 

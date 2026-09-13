@@ -1,23 +1,26 @@
 import * as THREE from 'three'
 
 export function createCameraRig(camera, transitionState = {}) {
-  const driftTarget = new THREE.Vector3()
-  const lookTarget = new THREE.Vector3()
+  camera.rotation.order = 'YXZ'
 
   return {
     update(time) {
-      const driftX = Math.sin(time * 0.24) * (transitionState.isTransitioning ? 1.2 : 0.6)
-      const driftY = Math.cos(time * 0.18) * (transitionState.isTransitioning ? 1.0 : 0.45)
+      const ambientStrength = Number(transitionState.ambientStrength ?? 0)
       const currentDepth = transitionState.currentDepth ?? camera.position.z
+      const targetYaw = Number(transitionState.targetYaw ?? 0)
+      const targetPitch = Number(transitionState.targetPitch ?? 0)
+      const maxYaw = Number(transitionState.maxYaw ?? 0.012)
+      const maxPitch = Number(transitionState.maxPitch ?? 0.002)
+      const ambientYaw = Math.sin(time * Number(transitionState.ambientSpeed ?? 0.38)) * maxYaw * ambientStrength
+      const ambientPitch = Math.sin(time * Number(transitionState.ambientPitchSpeed ?? 0.22) + 0.6) * maxPitch * ambientStrength
 
-      driftTarget.set(driftX, driftY, currentDepth)
-      lookTarget.set(driftX * 0.45, driftY * 0.35, currentDepth - 24)
+      camera.rotation.x = THREE.MathUtils.lerp(camera.rotation.x, targetPitch + ambientPitch, 0.05)
+      camera.rotation.y = THREE.MathUtils.lerp(camera.rotation.y, targetYaw + ambientYaw, 0.05)
+      camera.rotation.z = 0
 
-      camera.position.x = THREE.MathUtils.lerp(camera.position.x, driftTarget.x, 0.04)
-      camera.position.y = THREE.MathUtils.lerp(camera.position.y, driftTarget.y, 0.04)
+      camera.position.x = THREE.MathUtils.lerp(camera.position.x, 0, 0.04)
+      camera.position.y = THREE.MathUtils.lerp(camera.position.y, 0, 0.04)
       camera.position.z = currentDepth
-
-      camera.lookAt(lookTarget)
     },
   }
 }

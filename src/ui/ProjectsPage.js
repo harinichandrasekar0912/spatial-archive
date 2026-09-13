@@ -16,7 +16,7 @@ export function ProjectsPage({ projects = [] }) {
   return `
     <section id="projects" class="projects-page">
       <div class="section-heading">
-        <p class="eyebrow">ARCHIVE</p>
+        <p class="eyebrow">SPATIAL ARCHIVE</p>
         <h2>PROJECTS</h2>
       </div>
       <div class="projects-grid">

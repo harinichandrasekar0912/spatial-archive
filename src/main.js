@@ -21,7 +21,6 @@ let wheelLockUntil = 0
 let touchStartY = null
 let touchStartTime = 0
 let transitionProgress = 0
-let transitionDirection = 1
 let landingIntroPlayed = false
 
 function applyProjectsVisualProgress() {
@@ -32,7 +31,7 @@ function applyProjectsVisualProgress() {
   }
 
   const rootProgress = clampTransitionProgress(transitionProgress)
-  const progressValue = transitionDirection > 0 ? rootProgress : 1 - rootProgress
+  const progressValue = state.view === 'projects' ? rootProgress : 1 - rootProgress
   const scale = 0.12 + progressValue * 0.88
   const opacity = 0.12 + progressValue * 0.88
 
@@ -64,10 +63,26 @@ function syncLandingTagline() {
   })
 }
 
-function renderApp() {
+function syncAppShellState() {
+  const appShell = appRoot.querySelector('.app-shell')
+
+  if (!appShell) {
+    return
+  }
+
+  appShell.classList.toggle('is-projects-view', state.view === 'projects')
+  appShell.classList.toggle('is-workspace-view', state.view === 'workspace')
+  appShell.classList.toggle('is-create-modal-open', state.createModalOpen === true)
+}
+
+function renderApp({ refreshDOM = false } = {}) {
   sceneState.cameraZ = sceneController?.getCameraDepth?.() ?? sceneState.cameraZ
 
-  appRoot.innerHTML = App({ state, projectList: projects })
+  if (refreshDOM || !appRoot.querySelector('.app-shell')) {
+    appRoot.innerHTML = App({ state, projectList: projects })
+  }
+
+  syncAppShellState()
   applyMotionPreference()
 
   if (!landingIntroPlayed) {
@@ -89,7 +104,12 @@ function renderApp() {
         transitionProgress = progress
         applyProjectsVisualProgress()
       },
+      onComplete: () => {
+        transitionLocked = false
+      },
     })
+  } else {
+    transitionLocked = false
   }
 }
 
@@ -101,14 +121,9 @@ function enterProjects() {
   transitionLocked = true
   state.createModalOpen = false
   state.view = 'projects'
-  transitionDirection = 1
   transitionProgress = 0
 
   renderApp()
-
-  window.setTimeout(() => {
-    transitionLocked = false
-  }, 1200)
 }
 
 function returnToLanding() {
@@ -119,14 +134,9 @@ function returnToLanding() {
   transitionLocked = true
   state.createModalOpen = false
   state.view = 'landing'
-  transitionDirection = -1
   transitionProgress = 0
 
   renderApp()
-
-  window.setTimeout(() => {
-    transitionLocked = false
-  }, 1200)
 }
 
 function openCreateModal() {
@@ -149,11 +159,7 @@ function openWorkspace(projectId) {
   state.view = 'workspace'
   state.createModalOpen = false
 
-  renderApp()
-
-  window.setTimeout(() => {
-    transitionLocked = false
-  }, 1200)
+  renderApp({ refreshDOM: true })
 }
 
 renderApp()
