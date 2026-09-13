@@ -31,7 +31,7 @@ export function initSpatialScene(root = document.querySelector('#spatial-root'),
 
   mount.dataset.initialized = 'true'
 
-  const debugMode = false
+  const debugMode = true
 
   const sceneShell = document.createElement('div')
   sceneShell.className = 'spatial-scene'
@@ -83,7 +83,7 @@ export function initSpatialScene(root = document.querySelector('#spatial-root'),
     duration: reducedMotion ? 420 : 1100,
   }
 
-  const { layers } = buildDotField({ layers: 8, debugMode })
+  const { layers } = buildDotField({ layers: 8, spread: 60, step: 1.25, debugMode })
   const layeringSpacing = 10
   const layerMeshes = layers
     .map(({ positions, colors, opacity, size, depth: localDepth }) => {
@@ -93,9 +93,10 @@ export function initSpatialScene(root = document.querySelector('#spatial-root'),
 
       const material = new THREE.PointsMaterial({
         size,
+        color: 0x666666,
         transparent: true,
         opacity,
-        vertexColors: true,
+        vertexColors: false,
         depthWrite: false,
         sizeAttenuation: true,
       })
@@ -200,13 +201,10 @@ export function initSpatialScene(root = document.querySelector('#spatial-root'),
         nextDepth -= layeringSpacing
       }
 
-      const distanceFromCamera = Math.max(0.01, Math.abs(layer.depth - camera.position.z))
-      const normalizedDistance = clamp(distanceFromCamera / 56, 0, 1)
-      const depthFade = 1 - normalizedDistance * 0.8
       const fadeStrength = reducedMotion ? 1 : introFade
 
-      layer.material.opacity = clamp(layer.baseOpacity * depthFade * fadeStrength, 0.02, layer.baseOpacity)
-      layer.material.size = layer.baseSize * (0.86 + (1 - normalizedDistance) * 0.34) * (0.7 + fadeStrength * 0.3)
+      layer.material.opacity = clamp(layer.baseOpacity * fadeStrength, 0.02, layer.baseOpacity)
+      layer.material.size = layer.baseSize
     }
 
     cameraRig.update(elapsed)
