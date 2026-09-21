@@ -25,6 +25,7 @@ let landingIntroPlayed = false
 let wheelIntent = 0
 let wheelResetTimer = null
 let createModalCloseTimer = null
+let previousCreateModalOpen = false
 
 function clampTransitionProgress(value) {
   return Math.max(0, Math.min(1, value))
@@ -178,11 +179,13 @@ function syncAppShellState() {
 
 function renderApp({ refreshDOM = false } = {}) {
   sceneState.cameraZ = sceneController?.getCameraDepth?.() ?? sceneState.cameraZ
+  const shouldRefreshForModal = previousCreateModalOpen !== state.createModalOpen
 
-  if (refreshDOM || !appRoot.querySelector('.app-shell')) {
+  if (refreshDOM || !appRoot.querySelector('.app-shell') || shouldRefreshForModal) {
     appRoot.innerHTML = App({ state, projectList: projects })
   }
 
+  previousCreateModalOpen = state.createModalOpen
   syncAppShellState()
   applyMotionPreference()
 

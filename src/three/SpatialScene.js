@@ -223,6 +223,8 @@ export function initSpatialScene(root = document.querySelector('#spatial-root'),
       const travelStartTime = recenterEndTime + transitionState.microSettle
       const travelProgress = clamp((now - travelStartTime) / transitionState.duration, 0, 1)
 
+      transitionState.travelProgress = travelProgress
+
       const recenterEased = easeInOutCubic(recenterProgress)
       const travelEased = easeInOutCubic(travelProgress)
 
@@ -237,7 +239,7 @@ export function initSpatialScene(root = document.querySelector('#spatial-root'),
         transitionState.currentDepth = transitionState.fromDepth
       }
 
-      transitionState.onProgress?.(overallProgress)
+      transitionState.onProgress?.(travelProgress)
 
       if (overallProgress >= 1) {
         transitionState.isTransitioning = false
