@@ -22,6 +22,86 @@ let touchStartY = null
 let touchStartTime = 0
 let transitionProgress = 0
 let landingIntroPlayed = false
+let wheelIntent = 0
+let wheelResetTimer = null
+let createModalCloseTimer = null
+
+function clampTransitionProgress(value) {
+  return Math.max(0, Math.min(1, value))
+}
+
+function easeOutCubic(value) {
+  const safeValue = clampTransitionProgress(value)
+  return 1 - Math.pow(1 - safeValue, 3)
+}
+
+function getProjectRevealProgress(progress) {
+  const revealStart = 0.66
+  const revealRange = 1 - revealStart
+  return clampTransitionProgress((progress - revealStart) / Math.max(0.01, revealRange))
+}
+
+function measureProjectCardOrigins() {
+  const projectSection = appRoot.querySelector('.projects-page')
+
+  if (!projectSection) {
+    return
+  }
+
+  const viewportCentreX = window.innerWidth / 2
+  const viewportCentreY = window.innerHeight / 2
+
+  projectSection.querySelectorAll('.project-card').forEach((card) => {
+    const rect = card.getBoundingClientRect()
+    const finalCardCentreX = rect.left + rect.width / 2
+    const finalCardCentreY = rect.top + rect.height / 2
+
+    card.dataset.startTranslateX = String(viewportCentreX - finalCardCentreX)
+    card.dataset.startTranslateY = String(viewportCentreY - finalCardCentreY)
+  })
+}
+
+function syncCreateModalOrigin() {
+  const modal = appRoot.querySelector('.create-modal')
+
+  if (!modal || state.createModalOpen !== true) {
+    return
+  }
+
+  const createCard = appRoot.querySelector('.project-card.is-create')
+
+  if (!createCard) {
+    return
+  }
+
+  const rect = createCard.getBoundingClientRect()
+  const originX = rect.left + rect.width / 2
+  const originY = rect.top + rect.height / 2
+  const viewportCentreX = window.innerWidth / 2
+  const viewportCentreY = window.innerHeight / 2
+
+  modal.style.setProperty('--create-translate-x', `${originX - viewportCentreX}px`)
+  modal.style.setProperty('--create-translate-y', `${originY - viewportCentreY}px`)
+  modal.style.setProperty('--create-scale', '0.02')
+  modal.style.setProperty('--create-opacity', '0.2')
+  modal.style.setProperty('--create-blur', '0px')
+
+  requestAnimationFrame(() => {
+    const activeModal = appRoot.querySelector('.create-modal')
+
+    if (!activeModal) {
+      return
+    }
+
+    activeModal.classList.add('is-opening')
+    activeModal.classList.remove('is-closing')
+    activeModal.style.setProperty('--create-scale', '1')
+    activeModal.style.setProperty('--create-opacity', '1')
+    activeModal.style.setProperty('--create-blur', '5px')
+    activeModal.style.setProperty('--create-translate-x', '0px')
+    activeModal.style.setProperty('--create-translate-y', '0px')
+  })
+}
 
 function applyProjectsVisualProgress() {
   const projectSection = appRoot.querySelector('.projects-page')
@@ -31,17 +111,38 @@ function applyProjectsVisualProgress() {
   }
 
   const rootProgress = clampTransitionProgress(transitionProgress)
-  const progressValue = state.view === 'projects' ? rootProgress : 1 - rootProgress
-  const scale = 0.12 + progressValue * 0.88
-  const opacity = 0.12 + progressValue * 0.88
+  const revealProgress = state.view === 'projects'
+    ? getProjectRevealProgress(rootProgress)
+    : getProjectRevealProgress(1 - rootProgress)
+  const easedReveal = easeOutCubic(revealProgress)
 
   projectSection.style.setProperty('--projects-progress', rootProgress.toFixed(3))
-  projectSection.style.setProperty('--project-scale', scale.toFixed(3))
-  projectSection.style.setProperty('--project-opacity', opacity.toFixed(3))
-}
+  projectSection.style.setProperty('--project-scale', (0.02 + easedReveal * 0.98).toFixed(3))
+  projectSection.style.setProperty('--project-opacity', (0.18 + easedReveal * 0.82).toFixed(3))
 
-function clampTransitionProgress(value) {
-  return Math.max(0, Math.min(1, value))
+  projectSection.querySelectorAll('.project-card').forEach((card) => {
+    const startTranslateX = Number(card.dataset.startTranslateX || 0)
+    const startTranslateY = Number(card.dataset.startTranslateY || 0)
+    const translateX = startTranslateX * (1 - easedReveal)
+    const translateY = startTranslateY * (1 - easedReveal)
+    const scale = 0.02 + easedReveal * 0.98
+    const opacity = 0.18 + easedReveal * 0.82
+    const pointerActive = state.view === 'projects' && easedReveal >= 0.98
+
+    card.style.transform = `translate3d(${translateX}px, ${translateY}px, 0) scale(${scale})`
+    card.style.opacity = opacity.toFixed(3)
+    card.style.pointerEvents = pointerActive ? 'auto' : 'none'
+  })
+
+  const heading = projectSection.querySelector('.section-heading')
+
+  if (heading) {
+    const headingProgress = clampTransitionProgress((rootProgress - 0.75) / 0.25)
+    const headingEased = easeOutCubic(headingProgress)
+    heading.style.opacity = (0.08 + headingEased * 0.92).toFixed(3)
+    heading.style.transform = `translate3d(0, ${12 - headingEased * 12}px, 0)`
+    heading.style.pointerEvents = headingEased >= 0.9 && state.view === 'projects' ? 'auto' : 'none'
+  }
 }
 
 function syncLandingTagline() {
@@ -92,7 +193,14 @@ function renderApp({ refreshDOM = false } = {}) {
     syncLandingTagline()
   }
 
-  applyProjectsVisualProgress()
+  requestAnimationFrame(() => {
+    measureProjectCardOrigins()
+    applyProjectsVisualProgress()
+
+    if (state.createModalOpen) {
+      syncCreateModalOrigin()
+    }
+  })
 
   const targetDepth = viewDepths[state.view] ?? 0
 
@@ -122,7 +230,6 @@ function enterProjects() {
   state.createModalOpen = false
   state.view = 'projects'
   transitionProgress = 0
-
   renderApp()
 }
 
@@ -135,18 +242,38 @@ function returnToLanding() {
   state.createModalOpen = false
   state.view = 'landing'
   transitionProgress = 0
-
   renderApp()
 }
 
 function openCreateModal() {
+  if (transitionLocked || state.createModalOpen) {
+    return
+  }
+
   state.createModalOpen = true
   renderApp()
 }
 
 function closeCreateModal() {
-  state.createModalOpen = false
-  renderApp()
+  const modal = appRoot.querySelector('.create-modal')
+
+  if (!modal) {
+    state.createModalOpen = false
+    renderApp()
+    return
+  }
+
+  modal.classList.remove('is-opening')
+  modal.classList.add('is-closing')
+  modal.style.setProperty('--create-scale', '0.02')
+  modal.style.setProperty('--create-opacity', '0.2')
+  modal.style.setProperty('--create-blur', '0px')
+
+  clearTimeout(createModalCloseTimer)
+  createModalCloseTimer = setTimeout(() => {
+    state.createModalOpen = false
+    renderApp()
+  }, 420)
 }
 
 function openWorkspace(projectId) {
@@ -253,10 +380,25 @@ window.addEventListener(
       return
     }
 
-    if (state.view === 'landing' && event.deltaY > 45 && Date.now() >= wheelLockUntil) {
+    if (state.view === 'landing') {
       event.preventDefault()
-      wheelLockUntil = Date.now() + 1200
-      enterProjects()
+      wheelIntent += Math.abs(event.deltaY)
+
+      if (wheelResetTimer) {
+        clearTimeout(wheelResetTimer)
+      }
+
+      wheelResetTimer = setTimeout(() => {
+        wheelIntent = 0
+      }, 160)
+
+      if (wheelIntent >= 110) {
+        wheelIntent = 0
+        if (wheelResetTimer) {
+          clearTimeout(wheelResetTimer)
+        }
+        enterProjects()
+      }
       return
     }
 
@@ -308,6 +450,12 @@ document.addEventListener(
   },
   { passive: false },
 )
+
+window.addEventListener('resize', () => {
+  measureProjectCardOrigins()
+  applyProjectsVisualProgress()
+  syncCreateModalOrigin()
+})
 
 window.addEventListener('beforeunload', () => {
   sceneController?.destroy?.()

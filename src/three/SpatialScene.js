@@ -31,7 +31,7 @@ export function initSpatialScene(root = document.querySelector('#spatial-root'),
 
   mount.dataset.initialized = 'true'
 
-  const debugMode = true
+  const debugMode = false
 
   const sceneShell = document.createElement('div')
   sceneShell.className = 'spatial-scene'
@@ -79,23 +79,32 @@ export function initSpatialScene(root = document.querySelector('#spatial-root'),
     duration: reducedMotion ? 900 : 1500,
     onProgress: null,
     onComplete: null,
+    currentYaw: 0,
+    fromYaw: 0,
     targetYaw: 0,
+    currentPitch: 0,
+    fromPitch: 0,
     targetPitch: 0,
-    ambientStrength: 1,
+    targetPositionX: 0,
+    targetPositionY: 0,
+    fromPositionX: 0,
+    fromPositionY: 0,
+    ambientStrength: 0,
     ambientStrengthTarget: 1,
-    maxYaw: 0.012,
-    maxPitch: 0.002,
+    maxYaw: 0.0125,
+    maxPitch: 0.0022,
     ambientSpeed: 0.38,
     ambientPitchSpeed: 0.22,
     recenterDuration: reducedMotion ? 260 : 600,
     microSettle: reducedMotion ? 30 : 100,
   }
+
   const introState = {
     startedAt: performance.now(),
     duration: reducedMotion ? 420 : 1100,
   }
 
-  const { layers } = buildDotField({ layers: 8, spread: 60, step: 1.25, debugMode })
+  const { layers } = buildDotField({ layers: 8, spread: 150, step: 1.25, debugMode })
   const layeringSpacing = 10
   const layerMeshes = layers
     .map(({ positions, colors, opacity, size, depth: localDepth }) => {
@@ -154,9 +163,15 @@ export function initSpatialScene(root = document.querySelector('#spatial-root'),
       }
 
       transitionState.fromDepth = camera.position.z
+      transitionState.fromYaw = camera.rotation.y
+      transitionState.fromPitch = camera.rotation.x
+      transitionState.fromPositionX = camera.position.x
+      transitionState.fromPositionY = camera.position.y
       transitionState.targetDepth = nextTarget
       transitionState.targetYaw = 0
       transitionState.targetPitch = 0
+      transitionState.targetPositionX = 0
+      transitionState.targetPositionY = 0
       transitionState.startTime = performance.now()
       transitionState.duration = Math.max(500, Number(duration) || transitionState.duration)
       transitionState.onProgress = typeof onProgress === 'function' ? onProgress : null
@@ -188,42 +203,59 @@ export function initSpatialScene(root = document.querySelector('#spatial-root'),
 
   const animate = () => {
     const elapsed = clock.getElapsedTime()
+    const now = performance.now()
+
+    if (!transitionState.isTransitioning) {
+      transitionState.ambientStrengthTarget = 1
+    }
+
+    transitionState.ambientStrength = THREE.MathUtils.lerp(
+      transitionState.ambientStrength,
+      transitionState.ambientStrengthTarget,
+      0.06,
+    )
 
     if (transitionState.isTransitioning) {
-      const now = performance.now()
       const totalTransitionDuration = transitionState.duration + transitionState.recenterDuration + transitionState.microSettle
       const overallProgress = clamp((now - transitionState.startTime) / totalTransitionDuration, 0, 1)
+      const recenterProgress = clamp((now - transitionState.startTime) / transitionState.recenterDuration, 0, 1)
       const recenterEndTime = transitionState.startTime + transitionState.recenterDuration
       const travelStartTime = recenterEndTime + transitionState.microSettle
       const travelProgress = clamp((now - travelStartTime) / transitionState.duration, 0, 1)
 
-      if (transitionState.targetDepth >= 0 && now >= travelStartTime + transitionState.duration) {
-        transitionState.ambientStrengthTarget = 1
-      }
+      const recenterEased = easeInOutCubic(recenterProgress)
+      const travelEased = easeInOutCubic(travelProgress)
 
-      transitionState.ambientStrength = THREE.MathUtils.lerp(
-        transitionState.ambientStrength,
-        transitionState.ambientStrengthTarget,
-        0.06,
-      )
+      transitionState.currentYaw = THREE.MathUtils.lerp(transitionState.fromYaw, transitionState.targetYaw, recenterEased)
+      transitionState.currentPitch = THREE.MathUtils.lerp(transitionState.fromPitch, transitionState.targetPitch, recenterEased)
+      transitionState.positionX = THREE.MathUtils.lerp(transitionState.fromPositionX, transitionState.targetPositionX, recenterEased)
+      transitionState.positionY = THREE.MathUtils.lerp(transitionState.fromPositionY, transitionState.targetPositionY, recenterEased)
 
-      if (now < travelStartTime) {
-        transitionState.currentDepth = transitionState.fromDepth
+      if (now >= travelStartTime) {
+        transitionState.currentDepth = THREE.MathUtils.lerp(transitionState.fromDepth, transitionState.targetDepth, travelEased)
       } else {
-        const eased = easeInOutCubic(travelProgress)
-        transitionState.currentDepth = THREE.MathUtils.lerp(transitionState.fromDepth, transitionState.targetDepth, eased)
+        transitionState.currentDepth = transitionState.fromDepth
       }
 
-      camera.position.z = transitionState.currentDepth
       transitionState.onProgress?.(overallProgress)
 
       if (overallProgress >= 1) {
         transitionState.isTransitioning = false
         transitionState.currentDepth = transitionState.targetDepth
+        transitionState.currentYaw = transitionState.targetYaw
+        transitionState.currentPitch = transitionState.targetPitch
+        transitionState.positionX = transitionState.targetPositionX
+        transitionState.positionY = transitionState.targetPositionY
         transitionState.ambientStrength = transitionState.ambientStrengthTarget
         transitionState.onProgress?.(1)
         transitionState.onComplete?.()
       }
+    } else {
+      transitionState.currentDepth = transitionState.targetDepth
+      transitionState.currentYaw = transitionState.targetYaw
+      transitionState.currentPitch = transitionState.targetPitch
+      transitionState.positionX = transitionState.targetPositionX
+      transitionState.positionY = transitionState.targetPositionY
     }
 
     const orderedLayers = [...layerMeshes].sort((a, b) => a.depth - b.depth)
