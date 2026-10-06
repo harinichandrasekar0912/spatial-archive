@@ -4,6 +4,7 @@ import { INPUT } from './app/constants.js'
 import { createNavigator } from './app/navigator.js'
 import { createProjectStore } from './data/projects.js'
 import { warmEffects } from './app/dustEffects.js'
+import { createDotGlow } from './three/dotGlow.js'
 import { createDustLayer } from './three/DustLayer.js'
 import { createSpatialScene } from './three/SpatialScene.js'
 import { createCreateModal } from './ui/CreateModal.js'
@@ -56,6 +57,17 @@ nav = createNavigator({
 })
 
 scene.onFrame(nav.frame)
+
+// Landing and Projects: the dots near the pointer brighten like stars (after nav.frame, so it
+// sees this frame's view and fade).
+createDotGlow(scene, {
+  reducedMotion,
+  isEnabled() {
+    const view = nav.getView()
+    return (view === 'landing' || view === 'projects') && !modal.isActive()
+  },
+})
+
 nav.boot()
 scene.start()
 // Compile the scene's and the dust's shaders now, in parallel, rather than mid-transition, and

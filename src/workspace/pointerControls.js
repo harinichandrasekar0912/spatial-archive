@@ -21,6 +21,8 @@ const DEG = Math.PI / 180
  *   Shift + drag up / down  → push it back / pull it forward one layer per step (spec §107)
  *   drag corner arc         → resize (aspect locked for images and PDFs)
  *   drag the floor dial     → turn the item around its vertical axis, in snapped steps
+ *   drag a thread node      → pull out a thread; let go over another item or group to tie it
+ *   click a thread / bubble → select it (a selected group's bubble can then be dragged)
  *   drag empty space        → pan; nearer layers slide faster than deeper ones (parallax)
  *   mouse wheel / pinch     → fly through the volume towards the pointer
  *   trackpad scroll         → pan
@@ -191,9 +193,30 @@ export function attachPointerControls(ctx) {
     ctx.markDirty()
   }
 
+  // Ends whatever the gesture changed: items are committed (recorded for undo), threads tied.
+  function finishGesture(finished, { cancelled = false, event = null } = {}) {
+    if (finished.type === 'connect') {
+      ctx.endConnect(cancelled ? NaN : event.clientX, cancelled ? NaN : event.clientY)
+      return
+    }
+
+    if (finished.type === 'group') {
+      ctx.endGroupMove(finished.moved)
+      return
+    }
+
+    if (finished.type === 'depth') {
+      ctx.setDepthGuide(null)
+    }
+
+    if (finished.item && finished.editing) {
+      ctx.commit(finished.item, { moved: finished.moved || finished.type === 'depth' || finished.type === 'rotate' })
+    }
+  }
+
   function startPinch() {
-    if (gesture?.moved && gesture.item) {
-      ctx.commit(gesture.item)
+    if (gesture) {
+      finishGesture(gesture, { cancelled: true })
     }
 
     gesture = null
@@ -248,10 +271,20 @@ export function attachPointerControls(ctx) {
       return
     }
 
+    // A thread node: pull a thread out of the selected item or group.
+    const node = event.button === 0 ? event.target.closest('[data-connect-handle]') : null
+
+    if (node && node.dataset.source && ctx.beginConnect(node.dataset.source)) {
+      gesture = { ...base, type: 'connect' }
+      ctx.moveConnect(event.clientX, event.clientY)
+      return
+    }
+
     // The turn dial lying on the floor in front of the selected item.
     if (event.button === 0 && ctx.getSelected() && ctx.hitsDial(event.clientX, event.clientY)) {
       const item = ctx.getSelected()
-      gesture = { ...base, type: 'rotate', item, startRotation: item.record.rotY }
+      ctx.beginEdit(item, 'turn')
+      gesture = { ...base, type: 'rotate', item, startRotation: item.record.rotY, editing: true }
       canvas.classList.add('is-turning')
       return
     }
@@ -261,10 +294,12 @@ export function attachPointerControls(ctx) {
 
       if (item) {
         const { record } = item
+        ctx.beginEdit(item, 'resize')
         gesture = {
           ...base,
           type: 'resize',
           item,
+          editing: true,
           z: ctx.itemDepth(item),
           left: toWorldX(record.x) - toWorldLength(record.width) / 2,
           top: toWorldY(record.y) + toWorldLength(record.height) / 2,
@@ -278,10 +313,28 @@ export function attachPointerControls(ctx) {
     }
 
     const id = event.button === 0 ? scene3d.pick(event.clientX, event.clientY) : null
-    const item = id ? ctx.getItem(id) : null
+    let item = id ? ctx.getItem(id) : null
+    const thread = event.button === 0 ? ctx.pickThread(event.clientX, event.clientY) : null
+
+    // A thread in front of the card under the pointer (or over empty space) takes the press.
+    if (thread && (!item || thread.z > ctx.itemDepth(item) - 0.01)) {
+      item = null
+      gesture = { ...base, type: 'pan', threadId: thread.id }
+      return
+    }
 
     if (!item) {
-      gesture = { ...base, type: 'pan' }
+      const group = event.button === 0 ? ctx.groupAt(event.clientX, event.clientY) : null
+
+      // A selected group's bubble can be dragged: the whole group moves.
+      if (group && group.id === ctx.getSelectedGroup()) {
+        const hit = scene3d.planeHit(event.clientX, event.clientY, group.z)
+        ctx.beginGroupMove(group.id)
+        gesture = { ...base, type: 'group', z: group.z, startHit: hit }
+        return
+      }
+
+      gesture = { ...base, type: 'pan', groupId: group?.id || null }
       // Pressing empty space takes focus off any card (preventDefault stops the browser doing it).
       canvas.focus({ preventScroll: true })
       return
@@ -305,17 +358,20 @@ export function attachPointerControls(ctx) {
     ctx.select(id, { focus: true })
 
     if (event.shiftKey) {
-      gesture = { ...base, type: 'depth', item, startLayer: item.record.z }
+      ctx.beginEdit(item, 'change depth')
+      gesture = { ...base, type: 'depth', item, startLayer: item.record.z, editing: true }
       ctx.setDepthGuide(item)
       return
     }
 
     const z = ctx.itemDepth(item)
     const hit = scene3d.planeHit(event.clientX, event.clientY, z)
+    ctx.beginEdit(item, 'move')
     gesture = {
       ...base,
       type: 'card',
       item,
+      editing: true,
       z,
       offsetX: hit ? toWorldX(item.record.x) - hit.x : 0,
       offsetY: hit ? toWorldY(item.record.y) - hit.y : 0,
@@ -339,15 +395,31 @@ export function attachPointerControls(ctx) {
       // Hover feedback only.
       if (ctx.isEnabled() && event.pointerType === 'mouse' && isFrontFacing()) {
         const overDial = Boolean(ctx.getSelected()) && ctx.hitsDial(event.clientX, event.clientY)
+        const card = !overDial && scene3d.pick(event.clientX, event.clientY)
+        const thread = overDial ? null : ctx.pickThread(event.clientX, event.clientY)
+        const overThread = Boolean(thread && (!card || thread.z > ctx.itemDepth(ctx.getItem(card)) - 0.01))
+        const group = !overDial && !overThread && !card ? ctx.groupAt(event.clientX, event.clientY) : null
         ctx.setDialHover(overDial)
+        ctx.setThreadHover(overThread ? thread.id : null)
         canvas.classList.toggle('is-over-dial', overDial)
-        canvas.classList.toggle('is-over-card', !overDial && Boolean(scene3d.pick(event.clientX, event.clientY)))
+        canvas.classList.toggle('is-over-thread', overThread)
+        canvas.classList.toggle('is-over-card', !overDial && !overThread && Boolean(card))
+        // A bubble can be clicked to select its group; a selected one can be dragged.
+        canvas.classList.toggle('is-over-group', Boolean(group) && group.id !== ctx.getSelectedGroup())
+        canvas.classList.toggle('is-over-selected-group', Boolean(group) && group.id === ctx.getSelectedGroup())
       }
 
       return
     }
 
     if (event.pointerId !== gesture.pointerId) {
+      return
+    }
+
+    // A thread follows the pointer from the very first movement.
+    if (gesture.type === 'connect') {
+      gesture.moved = true
+      ctx.moveConnect(event.clientX, event.clientY)
       return
     }
 
@@ -372,6 +444,13 @@ export function attachPointerControls(ctx) {
         gesture.item.record.y = fromWorldY(hit.y + gesture.offsetY)
         canvas.classList.add('is-dragging-card')
         ctx.markDirty()
+      }
+    } else if (gesture.type === 'group') {
+      const hit = scene3d.planeHit(event.clientX, event.clientY, gesture.z)
+
+      if (hit && gesture.startHit) {
+        ctx.moveGroupBy(hit.x - gesture.startHit.x, hit.y - gesture.startHit.y)
+        canvas.classList.add('is-dragging-card')
       }
     } else if (gesture.type === 'depth') {
       // Upwards pushes the card away from you, downwards pulls it closer.
@@ -411,17 +490,19 @@ export function attachPointerControls(ctx) {
       return
     }
 
-    if (finished.type === 'depth') {
-      ctx.setDepthGuide(null)
-    }
+    finishGesture(finished, { cancelled: event.type === 'pointercancel', event })
 
-    if (finished.item && (finished.moved || finished.type === 'depth' || finished.type === 'rotate')) {
-      ctx.commit(finished.item)
-    }
-
-    // A click on empty space clears the selection.
+    // A click (no drag) on a thread or a bubble selects it; on empty space clears the selection.
     if (finished.type === 'pan' && !finished.moved && event.type === 'pointerup') {
-      ctx.select(null)
+      if (finished.threadId) {
+        ctx.selectThread(finished.threadId)
+      } else if (finished.groupId) {
+        ctx.selectGroup(finished.groupId)
+      } else {
+        ctx.select(null)
+        ctx.selectThread(null)
+        ctx.selectGroup(null)
+      }
     }
   }
 
@@ -463,13 +544,13 @@ export function attachPointerControls(ctx) {
 
   return {
     flyBy,
+    // A drag (of any kind) is in progress.
+    isBusy: () => gesture !== null || pinch !== null,
     cancel() {
       if (gesture?.type === 'tilt') {
         releaseTilt()
-      }
-
-      if (gesture?.type === 'depth') {
-        ctx.setDepthGuide(null)
+      } else if (gesture) {
+        finishGesture(gesture, { cancelled: true })
       }
 
       canvas.classList.remove('is-panning', 'is-dragging-card', 'is-tilting', 'is-turning')

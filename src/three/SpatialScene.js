@@ -50,6 +50,7 @@ export function createSpatialScene(mount, { startZ = 0 } = {}) {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, CAMERA.maxPixelRatio))
     renderer.setSize(viewport.width, viewport.height, false)
     dotField.setPixelScale(renderer.getPixelRatio() * viewport.height * 0.5)
+    dotField.setViewport(viewport.width, viewport.height)
     camera.aspect = viewport.width / Math.max(1, viewport.height)
     camera.updateProjectionMatrix()
     forceRender = true

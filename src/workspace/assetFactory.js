@@ -3,6 +3,7 @@ import { createAssetId, createFileId, normalizeAsset } from '../data/workspaceSt
 import { loadImage } from '../utils/image.js'
 import { extensionOf, isModelName, isSidecarName, loadModelObject } from './models/modelLoader.js'
 import { prepareModelAsync } from './models/modelStyle.js'
+import { makeWebImage, renderPdfPreview } from './webCopies.js'
 
 const TYPE_BY_EXTENSION = {
   jpg: 'image/jpeg',
@@ -50,6 +51,7 @@ async function readImageSize(url) {
 }
 
 // Long edge capped at defaultImageMax; tiny images are scaled up so they remain usable.
+// (PDF cards use the same rule with their first page's proportions.)
 function cardSizeForImage({ width, height }) {
   const longEdge = Math.max(width, height)
   const target = Math.min(WORKSPACE.defaultImageMax, Math.max(SMALLEST_LONG_EDGE, longEdge))
@@ -58,8 +60,28 @@ function cardSizeForImage({ width, height }) {
 }
 
 /*
- * Turns a dropped / picked File into { record, file, url }. The blob is stored once in the
- * "files" store; the asset record only references it by fileId.
+ * A picture of a PDF's first page, stored beside it: { file (record to store), url, size, pages },
+ * or null. The card takes the page's proportions.
+ */
+export async function preparePdfPreview(blob, name, projectId) {
+  const preview = await renderPdfPreview(blob)
+
+  if (!preview) {
+    return null
+  }
+
+  return {
+    file: { id: createFileId(), projectId, blob: preview.blob, name: `${name}.preview`, type: preview.blob.type, size: preview.blob.size, createdAt: new Date().toISOString() },
+    url: URL.createObjectURL(preview.blob),
+    size: cardSizeForImage(preview),
+    pages: preview.pages,
+  }
+}
+
+/*
+ * Turns a dropped / picked File into { record, files, url, previewUrl }. Large photographs are
+ * stored as lighter web copies, and PDFs with a picture of their first page (see webCopies.js).
+ * Blobs are stored once in the "files" store; the asset record references them by id.
  */
 export async function prepareFileAsset(file, projectId) {
   const kind = kindOfFile(file)
@@ -68,24 +90,44 @@ export async function prepareFileAsset(file, projectId) {
     return null
   }
 
-  const mimeType = mimeTypeOf(file)
-  const url = URL.createObjectURL(file)
+  let mimeType = mimeTypeOf(file)
+  let stored = file
   let size = kind === 'pdf' ? { ...WORKSPACE.pdfSize } : { width: WORKSPACE.defaultImageMax, height: WORKSPACE.defaultImageMax }
+  let detail = null
+  let preview = null
 
   if (kind === 'image') {
-    const natural = await readImageSize(url)
+    const probe = URL.createObjectURL(file)
+    const natural = await readImageSize(probe)
+    URL.revokeObjectURL(probe)
 
     if (natural) {
       size = cardSizeForImage(natural)
+      const copy = await makeWebImage(file.type ? file : new File([file], file.name, { type: mimeType }), natural)
+
+      if (copy) {
+        stored = copy.file
+        mimeType = copy.file.type
+        detail = { webCopy: true, width: copy.width, height: copy.height, bytes: copy.file.size, sourceWidth: copy.sourceWidth, sourceHeight: copy.sourceHeight, sourceBytes: file.size }
+      }
+    }
+  } else {
+    preview = await preparePdfPreview(file, file.name, projectId)
+
+    if (preview) {
+      size = preview.size
+      detail = { pages: preview.pages }
     }
   }
 
   const now = new Date().toISOString()
   const fileId = createFileId()
+  const main = { id: fileId, projectId, blob: stored, name: file.name, type: mimeType, size: stored.size, createdAt: now }
 
   return {
-    url,
-    file: { id: fileId, projectId, blob: file, name: file.name, type: mimeType, size: file.size, createdAt: now },
+    url: URL.createObjectURL(stored),
+    previewUrl: preview?.url ?? null,
+    files: preview ? [main, preview.file] : [main],
     record: normalizeAsset({
       id: createAssetId(),
       projectId,
@@ -94,8 +136,10 @@ export async function prepareFileAsset(file, projectId) {
       filename: file.name,
       mimeType,
       fileId,
+      previewId: preview?.file.id ?? null,
       width: size.width,
       height: size.height,
+      detail,
       createdAt: now,
       updatedAt: now,
     }),

@@ -156,6 +156,211 @@
   inset: -8px;
 }
 
+/* The thread node just outside the top-centre (spec §100): drag from it to tie a thread. */
+.selection__node {
+  width: 12px;
+  height: 12px;
+  border: 1.5px solid rgba(242, 241, 237, 0.78);
+  border-radius: 50%;
+  background: var(--bg);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.55);
+  cursor: crosshair;
+  pointer-events: auto;
+  transition:
+    transform 180ms var(--ease-out),
+    border-color 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.selection__node::before {
+  content: '';
+  position: absolute;
+  inset: -9px;
+  border-radius: 50%;
+}
+
+.selection__node:hover,
+.workspace-canvas.is-connecting .selection__node {
+  border-color: var(--ink);
+  box-shadow:
+    0 0 0 4px rgba(242, 241, 237, 0.08),
+    0 1px 4px rgba(0, 0, 0, 0.55);
+  transform: scale(1.25);
+}
+
+.workspace-canvas.is-connecting {
+  cursor: crosshair;
+}
+
+/* While a thread is pulled over an item: a soft frame round the one it would be tied to. */
+.connect-target {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 3;
+  border: 1.5px solid rgba(231, 192, 102, 0.75);
+  box-shadow: 0 0 0 4px rgba(231, 192, 102, 0.1);
+  pointer-events: none;
+}
+
+.connect-target[hidden] {
+  display: none;
+}
+
+.workspace-canvas.is-over-thread:not(.is-panning),
+.workspace-canvas.is-over-group:not(.is-panning) {
+  cursor: pointer;
+}
+
+.workspace-canvas.is-over-selected-group:not(.is-dragging-card) {
+  cursor: grab;
+}
+
+/* ── Colour swatches (notes and threads): Apple-style round wells, the chosen one ringed ── */
+
+.selection__swatches,
+.thread-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: 999px;
+  background: var(--surface-glass);
+  box-shadow:
+    0 0 0 1px var(--hairline),
+    0 6px 18px rgba(0, 0, 0, 0.45);
+  pointer-events: auto;
+  animation: pill-in 220ms var(--ease-out);
+}
+
+.thread-controls {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 4;
+}
+
+.thread-controls[hidden] {
+  display: none;
+}
+
+@keyframes pill-in {
+  from {
+    opacity: 0;
+    translate: 0 4px;
+    scale: 0.96;
+  }
+}
+
+.swatches {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.swatch {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--swatch);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+  transition:
+    transform 180ms var(--ease-out),
+    box-shadow 180ms ease;
+}
+
+.swatch:hover {
+  transform: scale(1.12);
+}
+
+.swatch[aria-checked='true'] {
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.14),
+    0 0 0 2px rgb(22, 22, 21),
+    0 0 0 3.5px rgba(242, 241, 237, 0.9);
+}
+
+.swatch:focus-visible {
+  outline-offset: 4px;
+}
+
+.thread-controls__divider {
+  width: 1px;
+  height: 16px;
+  margin: 0 1px;
+  background: var(--line);
+}
+
+.thread-controls__cut {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  color: rgba(242, 241, 237, 0.72);
+  transition:
+    color 160ms ease,
+    background-color 160ms ease;
+}
+
+.thread-controls__cut:hover {
+  color: var(--ink);
+  background: rgba(242, 241, 237, 0.08);
+}
+
+/* ── Group controls: the group's thread node (top-centre) and a small pill below it ───── */
+
+.group-controls {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+}
+
+.group-controls[hidden] {
+  display: none;
+}
+
+.group-controls > * {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+.group-controls__pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px 4px 12px;
+  border-radius: 999px;
+  background: var(--surface-glass);
+  box-shadow:
+    0 0 0 1px var(--hairline),
+    0 6px 18px rgba(0, 0, 0, 0.45);
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  color: var(--ink-muted);
+  white-space: nowrap;
+  pointer-events: auto;
+  animation: pill-in 220ms var(--ease-out);
+}
+
+.group-controls__ungroup {
+  padding: 0.3rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  color: rgba(242, 241, 237, 0.8);
+  transition:
+    color 160ms ease,
+    background-color 160ms ease;
+}
+
+.group-controls__ungroup:hover {
+  color: var(--ink);
+  background: rgba(242, 241, 237, 0.08);
+}
+
 /* ── Depth guide: the card's lattice column during depth changes ────────────────────── */
 
 .depth-guide {
@@ -217,12 +422,13 @@
   left: 0;
   padding: 16px 18px;
   border: 0;
-  background: #151514;
+  background: var(--note-surface, #151514);
   box-shadow: 0 0 0 1px rgba(242, 241, 237, 0.35);
   font-family: inherit;
   font-size: 14px;
   line-height: 1.5;
-  color: var(--ink);
+  color: var(--note-ink, var(--ink));
+  caret-color: currentColor;
   outline: none;
   resize: none;
   transform-origin: 0 0;
@@ -232,7 +438,7 @@
 }
 
 .note-editor::placeholder {
-  color: rgba(242, 241, 237, 0.42);
+  color: var(--note-muted, rgba(242, 241, 237, 0.42));
 }
 
 /* ── Chrome ─────────────────────────────────────────────────────────────────────────── */
@@ -346,6 +552,213 @@
   left: calc(var(--ws-edge) - 10px);
 }
 
+/* Search sits above the + (home, +, search stacked in the corner). */
+.workspace-search-toggle {
+  position: absolute;
+  bottom: calc(var(--ws-edge) - 10px + 92px);
+  left: calc(var(--ws-edge) - 10px);
+}
+
+.workspace-search-toggle.is-active {
+  color: var(--ink);
+  background: rgba(242, 241, 237, 0.06);
+}
+
+/* ── Search bar: opens at the top centre, growing out from its middle ───────────────── */
+
+.search-bar {
+  --search-width: min(440px, calc(100vw - 2 * var(--ws-edge) - 160px));
+  position: absolute;
+  top: calc(var(--ws-edge) - 10px);
+  left: 50%;
+  width: 40px;
+  height: 40px;
+  transform: translateX(-50%);
+  transition: width 300ms cubic-bezier(0.55, 0, 0.3, 1);
+}
+
+.search-bar[hidden] {
+  display: none;
+}
+
+.search-bar.is-open {
+  width: var(--search-width);
+  transition: width 460ms var(--ease-out);
+}
+
+.search-bar__field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 100%;
+  margin: 0;
+  padding: 0 6px 0 13px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--surface-glass);
+  box-shadow:
+    0 0 0 1px var(--hairline),
+    0 10px 30px rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  transform: translateY(-6px) scale(0.97);
+  filter: blur(3px);
+  transition:
+    opacity 220ms ease,
+    transform 300ms cubic-bezier(0.55, 0, 0.3, 1),
+    filter 220ms ease,
+    box-shadow 200ms ease;
+}
+
+.search-bar.is-open .search-bar__field {
+  opacity: 1;
+  transform: none;
+  filter: none;
+  transition:
+    opacity 260ms ease,
+    transform 460ms var(--ease-out),
+    filter 360ms ease,
+    box-shadow 200ms ease;
+}
+
+.search-bar__field:focus-within {
+  box-shadow:
+    0 0 0 1px rgba(242, 241, 237, 0.2),
+    0 10px 30px rgba(0, 0, 0, 0.5);
+}
+
+/* The contents arrive once the bar has opened out (and leave first). */
+.search-bar__field > * {
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+
+.search-bar.is-open .search-bar__field > * {
+  opacity: 1;
+  transition: opacity 260ms ease 170ms;
+}
+
+.search-bar__glyph {
+  display: grid;
+  flex: none;
+  place-items: center;
+  color: var(--ink-muted);
+}
+
+.search-bar__glyph svg {
+  width: 16px;
+  height: 16px;
+}
+
+.search-bar input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: 0.9rem;
+  letter-spacing: -0.005em;
+  color: var(--ink);
+  outline: none;
+  caret-color: var(--ink);
+}
+
+.search-bar input::placeholder {
+  color: rgba(242, 241, 237, 0.4);
+}
+
+.search-bar__count {
+  flex: none;
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-muted);
+  white-space: nowrap;
+}
+
+.search-bar__count:empty {
+  display: none;
+}
+
+.search-bar__steps {
+  display: flex;
+  flex: none;
+}
+
+.search-bar__steps[hidden] {
+  display: none;
+}
+
+.search-bar__steps button {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  color: rgba(242, 241, 237, 0.7);
+  transition:
+    color 160ms ease,
+    background-color 160ms ease;
+}
+
+.search-bar__steps button:hover {
+  color: var(--ink);
+  background: rgba(242, 241, 237, 0.07);
+}
+
+/* The × sits just to the right of the bar. */
+.search-bar__close {
+  position: absolute;
+  top: 3px;
+  left: calc(100% + 8px);
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--surface-glass);
+  box-shadow:
+    0 0 0 1px var(--hairline),
+    0 6px 18px rgba(0, 0, 0, 0.45);
+  color: rgba(242, 241, 237, 0.78);
+  opacity: 0;
+  transform: translateX(-8px) scale(0.85);
+  transition:
+    opacity 160ms ease,
+    transform 260ms cubic-bezier(0.55, 0, 0.3, 1),
+    color 160ms ease;
+}
+
+.search-bar.is-open .search-bar__close {
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity 260ms ease 150ms,
+    transform 420ms var(--ease-out) 110ms,
+    color 160ms ease;
+}
+
+.search-bar__close:hover {
+  color: var(--ink);
+}
+
+.search-bar__close svg {
+  width: 15px;
+  height: 15px;
+}
+
+.reduced-motion .search-bar,
+.reduced-motion .search-bar.is-open {
+  width: var(--search-width);
+}
+
+@media (max-width: 720px) {
+  .search-bar {
+    --search-width: calc(100vw - 2 * var(--ws-edge) - 44px);
+    top: calc(var(--ws-edge) + 3.1rem);
+    transform: translateX(calc(-50% - 21px));
+  }
+}
+
 .workspace-empty {
   position: absolute;
   top: 50%;
@@ -438,6 +851,10 @@
 
 .focus-view__media img {
   object-fit: contain;
+}
+
+.focus-view__media .focus-view__page {
+  background: #fff;
 }
 
 .focus-view__stage {

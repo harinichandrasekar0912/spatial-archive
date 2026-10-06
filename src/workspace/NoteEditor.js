@@ -1,3 +1,4 @@
+import { noteColor } from './cardTextures.js'
 import { CARD_RADIUS_PX } from './scene3d.js'
 
 /*
@@ -36,12 +37,21 @@ export function createNoteEditor(layer, { onInput, onStop }) {
       }
 
       item = nextItem
+      controller.setColor(item.record.color)
       textarea.value = item.record.notes
       textarea.style.width = `${item.record.width}px`
       textarea.style.height = `${item.record.height}px`
       textarea.hidden = false
       textarea.focus({ preventScroll: true })
       textarea.setSelectionRange(textarea.value.length, textarea.value.length)
+    },
+
+    // The editor takes the note's own paper and ink.
+    setColor(id) {
+      const colors = noteColor(id)
+      textarea.style.setProperty('--note-surface', colors.surface)
+      textarea.style.setProperty('--note-ink', colors.ink)
+      textarea.style.setProperty('--note-muted', colors.muted)
     },
 
     // Follow the card every frame (the camera can still move while editing).

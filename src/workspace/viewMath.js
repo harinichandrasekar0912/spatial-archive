@@ -1,4 +1,4 @@
-import { CAMERA, WORKSPACE } from '../app/constants.js'
+import { CAMERA, FLOOR, WORKSPACE } from '../app/constants.js'
 import { clamp } from '../utils/easing.js'
 
 /*
@@ -57,65 +57,88 @@ export function referenceLayer(cameraZ, gap = 1) {
  * shows and the floor recedes from the bottom of the screen into the space. The camera faces
  * straight in, so the floor constraint fixes its height for each depth; a binary search on the
  * depth then finds the closest view that holds everything (never closer than 1:1 zoom).
- * boxes: [{ x, y, z, halfWidth, halfHeight }] in world units.
+ * boxes: [{ x, y, z, halfWidth, halfHeight }] in world units. Returns { x, y, z, frontZ }.
  */
 export function computeEntryView(boxes, { floorY, frontZ }, { width, height }) {
   const tanV = TAN_HALF_FOV
   const tanH = TAN_HALF_FOV * (width / height)
   const xMax = 1 - (2 * WORKSPACE.fitMarginPx) / width
   const yMax = 1 - (2 * WORKSPACE.fitTopPx) / height
-  const heightAt = (cameraZ) => floorY + (cameraZ - frontZ) * tanV
+  const floorHeightAt = (cameraZ, edge = frontZ) => floorY + (cameraZ - edge) * tanV
 
   // The floor's front edge stays far enough ahead to be drawn crisply (lines dissolve up close).
   const minZ = frontZ + WORKSPACE.entryFloorGap
 
   if (!boxes.length) {
     const z = clampCameraZ(Math.max(itemZ(0) + distanceForZoom(1, height), minZ))
-    return { x: 0, y: heightAt(z), z }
+    return { x: 0, y: floorHeightAt(z), z, frontZ }
   }
 
-  const solve = (cameraZ) => {
-    const y = heightAt(cameraZ)
-    let xLow = -Infinity
-    let xHigh = Infinity
+  // The closest depth at which every box fits, for a rule giving the camera's height.
+  function fit(heightAt, { checkBottom }) {
+    const solve = (cameraZ) => {
+      const y = heightAt(cameraZ)
+      let xLow = -Infinity
+      let xHigh = Infinity
 
-    for (const box of boxes) {
-      const depth = cameraZ - box.z
+      for (const box of boxes) {
+        const depth = cameraZ - box.z
+        const reach = yMax * tanV * depth
 
-      if (depth <= 0.5 || box.y + box.halfHeight > y + yMax * tanV * depth) {
-        return null
+        if (depth <= 0.5 || box.y + box.halfHeight > y + reach || (checkBottom && box.y - box.halfHeight < y - reach)) {
+          return null
+        }
+
+        xLow = Math.max(xLow, box.x + box.halfWidth - xMax * tanH * depth)
+        xHigh = Math.min(xHigh, box.x - box.halfWidth + xMax * tanH * depth)
       }
 
-      xLow = Math.max(xLow, box.x + box.halfWidth - xMax * tanH * depth)
-      xHigh = Math.min(xHigh, box.x - box.halfWidth + xMax * tanH * depth)
+      return xLow <= xHigh ? { x: (xLow + xHigh) / 2, y } : null
     }
 
-    return xLow <= xHigh ? { x: (xLow + xHigh) / 2, y } : null
+    const nearestZ = Math.max(...boxes.map((box) => box.z))
+    let near = Math.max(nearestZ + distanceForZoom(WORKSPACE.fitMaxZoom, height), nearestZ + WORKSPACE.minCameraGap, minZ)
+    let far = Math.max(near, WORKSPACE.layer0Z + WORKSPACE.maxCameraDistance)
+    const closeFit = solve(near)
+
+    if (closeFit) {
+      return { ...closeFit, z: near }
+    }
+
+    if (!solve(far)) {
+      const xs = boxes.flatMap((box) => [box.x - box.halfWidth, box.x + box.halfWidth])
+      return { x: (Math.min(...xs) + Math.max(...xs)) / 2, y: heightAt(far), z: far }
+    }
+
+    for (let iteration = 0; iteration < 32; iteration += 1) {
+      const middle = (near + far) / 2
+
+      if (solve(middle)) {
+        far = middle
+      } else {
+        near = middle
+      }
+    }
+
+    return { ...solve(far), z: far }
   }
 
-  const nearestZ = Math.max(...boxes.map((box) => box.z))
-  let near = Math.max(nearestZ + distanceForZoom(WORKSPACE.fitMaxZoom, height), nearestZ + WORKSPACE.minCameraGap, minZ)
-  let far = Math.max(near, WORKSPACE.layer0Z + WORKSPACE.maxCameraDistance)
-  const closeFit = solve(near)
+  /*
+   * On a tall (portrait) screen the width decides how far back the camera stands, and holding
+   * the floor's edge on the bottom of the screen from there would leave the work in a strip at
+   * the bottom. Instead the camera stays level with the middle of the work, and the floor
+   * reaches further out towards it, so its front edge is still on the bottom of the screen.
+   */
+  if (width / height < WORKSPACE.portraitBelow) {
+    const contentY = (Math.min(...boxes.map((box) => box.y - box.halfHeight)) + Math.max(...boxes.map((box) => box.y + box.halfHeight))) / 2
+    const view = fit(() => contentY, { checkBottom: true })
+    const furthestEdge = WORKSPACE.layer0Z + FLOOR.frontLayers * WORKSPACE.layerSpacing
+    const edge = Math.min(view.z - (view.y - floorY) / tanV, furthestEdge, view.z - WORKSPACE.entryFloorGap)
 
-  if (closeFit) {
-    return { ...closeFit, z: near }
-  }
-
-  if (!solve(far)) {
-    const xs = boxes.flatMap((box) => [box.x - box.halfWidth, box.x + box.halfWidth])
-    return { x: (Math.min(...xs) + Math.max(...xs)) / 2, y: heightAt(far), z: far }
-  }
-
-  for (let iteration = 0; iteration < 32; iteration += 1) {
-    const middle = (near + far) / 2
-
-    if (solve(middle)) {
-      far = middle
-    } else {
-      near = middle
+    if (edge >= frontZ) {
+      return { ...view, y: Math.max(view.y, floorHeightAt(view.z, edge)), frontZ: edge }
     }
   }
 
-  return { ...solve(far), z: far }
+  return { ...fit(floorHeightAt, { checkBottom: false }), frontZ }
 }

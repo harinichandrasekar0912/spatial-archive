@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { DOT_FIELD, VOLUME, WORKSPACE } from '../app/constants.js'
+import { DOT_FIELD, DOT_GLOW, VOLUME, WORKSPACE } from '../app/constants.js'
 import { smoothstep } from '../utils/easing.js'
 
 /*
@@ -41,24 +41,65 @@ function createLatticeGeometry(halfExtent, step) {
  * Point shader. Small dots stay solid, exactly like the original square points, so the field
  * keeps its weight; dots larger than a few pixels (a plane passing close to the camera) become
  * round with a one-pixel soft edge. Size attenuation matches THREE.PointsMaterial.
+ *
+ * Pointer glow (Landing, Projects): uTrail holds the pointer and a few fading samples behind it,
+ * in CSS pixels (y up) with a weight each. A dot takes the glow of its nearest sample, scaled by
+ * its own hashed "star" brightness and a slow twinkle, so the lit patch reads as a cluster of
+ * stars rather than a disc.
  */
+const TRAIL = DOT_GLOW.trailSamples
+const glsl = (value) => value.toFixed(4)
+
 const vertexShader = /* glsl */ `
+  #define TRAIL ${TRAIL}
   uniform float uSize;
   uniform float uScale;
   uniform float uFloorY;
   uniform float uFloorStrength;
+  uniform float uGlow;
+  uniform float uGlowRadius;
+  uniform vec2 uViewport;
+  uniform vec3 uTrail[TRAIL];
+  uniform float uTime;
   varying float vSize;
   varying float vFloor;
+  varying float vGlow;
+
+  float hash(vec3 p) {
+    return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719))) * 43758.5453);
+  }
 
   void main() {
     vec4 worldPosition = modelMatrix * vec4(position, 1.0);
     vec4 mvPosition = viewMatrix * worldPosition;
-    vSize = uSize * uScale / -mvPosition.z;
+    float size = max(uSize * uScale / -mvPosition.z, 1.0);
     // Inside a workspace nothing hangs below the floor: dots under it fade away, while the row
     // resting on the floor stays.
     vFloor = 1.0 - uFloorStrength * smoothstep(0.02, 0.3, uFloorY - worldPosition.y);
-    gl_PointSize = max(vSize, 1.0);
     gl_Position = projectionMatrix * mvPosition;
+    vGlow = 0.0;
+
+    if (uGlow > 0.001 && gl_Position.w > 0.0) {
+      vec2 screen = (gl_Position.xy / gl_Position.w * 0.5 + 0.5) * uViewport;
+      float glow = 0.0;
+
+      for (int i = 0; i < TRAIL; i++) {
+        vec2 offset = (screen - uTrail[i].xy) / uGlowRadius;
+        glow = max(glow, uTrail[i].z * exp(-2.4 * dot(offset, offset)));
+      }
+
+      if (glow > 0.002) {
+        // A dot's identity is its lattice position in the world, so recycled planes keep it.
+        float star = hash(floor(worldPosition.xyz * 4.0 + 0.5));
+        float brightness = 1.0 - ${glsl(DOT_GLOW.starVariance)} * (1.0 - star * star);
+        float twinkle = 1.0 - ${glsl(DOT_GLOW.twinkle)} * (0.5 + 0.5 * sin(uTime * (0.9 + 2.2 * fract(star * 7.31)) + star * 40.0));
+        vGlow = uGlow * glow * brightness * twinkle;
+        size = max(size * (1.0 + ${glsl(DOT_GLOW.sizeGain)} * vGlow), mix(size, ${glsl(DOT_GLOW.minSizePx)}, vGlow));
+      }
+    }
+
+    vSize = size;
+    gl_PointSize = size;
   }
 `
 
@@ -67,6 +108,7 @@ const fragmentShader = /* glsl */ `
   uniform float uOpacity;
   varying float vSize;
   varying float vFloor;
+  varying float vGlow;
 
   void main() {
     float alpha = vFloor;
@@ -76,9 +118,13 @@ const fragmentShader = /* glsl */ `
       alpha *= 1.0 - smoothstep(1.0 - 2.0 / vSize, 1.0, radius);
     }
 
-    if (alpha * uOpacity < 0.002) discard;
+    // Lit dots gain brightness; deeper (fainter) planes gain less, so depth stays readable.
+    float depthWeight = clamp(uOpacity / ${glsl(DOT_FIELD.nearOpacity)}, 0.0, 1.0);
+    float opacity = min(1.0, uOpacity * (1.0 + vGlow) + vGlow * mix(${glsl(DOT_GLOW.farBoost)}, ${glsl(DOT_GLOW.boost)}, depthWeight));
 
-    gl_FragColor = vec4(uColor, uOpacity * alpha);
+    if (alpha * opacity < 0.002) discard;
+
+    gl_FragColor = vec4(uColor, opacity * alpha);
     #include <tonemapping_fragment>
     #include <colorspace_fragment>
   }
@@ -142,7 +188,18 @@ export function createDotField(scene) {
   const geometry = createLatticeGeometry(DOT_FIELD.halfExtent, DOT_FIELD.step)
   // Uniform objects shared by every plane. uScale: drawing-buffer height / 2 (the same role as
   // PointsMaterial's "scale"). uFloorY / uFloorStrength: the workspace floor (see setFloor).
-  const shared = { uScale: { value: 1 }, uFloorY: { value: 0 }, uFloorStrength: { value: 0 } }
+  // uGlow … uTime: the pointer glow (see setGlow).
+  const shared = {
+    uScale: { value: 1 },
+    uFloorY: { value: 0 },
+    uFloorStrength: { value: 0 },
+    uGlow: { value: 0 },
+    uGlowRadius: { value: DOT_GLOW.radiusPx },
+    uViewport: { value: new THREE.Vector2(1, 1) },
+    uTrail: { value: Array.from({ length: TRAIL }, () => new THREE.Vector3()) },
+    uTime: { value: 0 },
+  }
+  let glowKey = ''
   const travelPlanes = Array.from({ length: DOT_FIELD.planeCount }, () => createPlane(scene, geometry, shared))
   const volumePlanes = volumeDepths().map((z) => ({ ...createPlane(scene, geometry, shared), z }))
   const forward = new THREE.Vector3()
@@ -200,6 +257,24 @@ export function createDotField(scene) {
     update,
     setPixelScale(value) {
       shared.uScale.value = value
+    },
+    setViewport(width, height) {
+      shared.uViewport.value.set(width, height)
+    },
+    /*
+     * The pointer glow. points: up to DOT_GLOW.trailSamples { x, y, weight } in CSS pixels
+     * (y down, as the pointer reports them); strength 0 – 1; time in seconds (twinkle).
+     */
+    setGlow({ strength, points = [], radius = DOT_GLOW.radiusPx, time = 0 }) {
+      const height = shared.uViewport.value.y
+      shared.uGlow.value = strength
+      shared.uGlowRadius.value = radius
+      shared.uTime.value = time
+      shared.uTrail.value.forEach((sample, index) => {
+        const point = points[index]
+        sample.set(point ? point.x : 0, point ? height - point.y : 0, point && strength > 0 ? point.weight : 0)
+      })
+      glowKey = strength > 0 ? `${strength.toFixed(3)}|${time.toFixed(2)}|${points.map((point) => `${point.x.toFixed(1)},${point.y.toFixed(1)},${point.weight.toFixed(3)}`).join(';')}` : ''
     },
     // Dots below `y` fade out by `strength` (0 – 1): inside a workspace the floor is the bottom.
     setFloor(y, strength) {
@@ -295,7 +370,7 @@ export function createDotField(scene) {
     // Anything that changes the rendered image without moving the camera.
     stateKey() {
       const bandKey = band ? `${band.top}|${band.bottom}|${band.visibility}` : ''
-      return `${fade}|${volume}|${bandKey}|${shared.uFloorY.value}|${shared.uFloorStrength.value}`
+      return `${fade}|${volume}|${bandKey}|${shared.uFloorY.value}|${shared.uFloorStrength.value}|${glowKey}`
     },
     dispose() {
       ;[...travelPlanes, ...volumePlanes].forEach(({ points, material }) => {

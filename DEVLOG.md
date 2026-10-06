@@ -5,6 +5,142 @@ portfolio process material (spec §133–135). Newest entries first.
 
 ---
 
+## 2026-10-07 — Stage 3: threads, groups, search, undo, colours, glowing dots, previews
+
+Everything the audit below listed as missing, except the Luxury Apartment demo content (the
+user will add the material themselves). Asked for by the user: loose threads with gravity, gold
+specks and colours; note colours; search that travels to the match; dots that glow near the
+pointer. The rest comes from the brief.
+
+### Built
+
+- **Glowing dots (Landing, Projects).** The dot shader brightens each dot by its distance on
+  screen to the pointer and a short trail of fading samples behind it (`three/dotGlow.js`).
+  Each dot's response is scaled by a hashed "star" brightness and a slow twinkle, so the lit
+  patch reads as a cluster of stars and reveals the depth of the lattice. Off in the workspace
+  and on touch; it fades with the field during transitions.
+- **Note colours.** Graphite (default) plus yellow, green, blue, pink and purple: the usual
+  sticky-note set (as in Apple's Stickies and Freeform), made very mild. They were chosen in
+  OKLCH so each has the same lightness and chroma (pale paper at L 0.86, written in dark ink).
+  The picker is a row of round wells under a selected note, with a ring on the chosen one. New
+  notes start in the last colour used.
+- **Threads (spec §100–102, §118).** Drag the node above a selected item or group onto another
+  to tie one. Each thread is a small Verlet rope (28 points, both ends tied, gravity, floor
+  collision) with about 2% slack, so it settles into a shallow curve with its lowest point
+  between its ends and sways when an end moves. It sleeps when still. It is drawn as a
+  camera-facing ribbon with a true pixel width, soft edges and a faint sheen, plus tiny gold
+  specks that glint as the view moves. Thread colours are the note hues one step deeper
+  (L 0.72), plus a default silk. Click a thread to recolour or cut it: a cut thread parts in the
+  middle and both halves fall before fading. Records reference both ends by ID.
+- **Groups (spec §103–106).** Decided when something is put down: within 0.45 world units
+  (about 58 px) of a neighbour on the same layer it joins that neighbour's group (or forms one).
+  Beyond 0.9 of every member it leaves. A group that comes apart splits, and one left with a
+  single member dissolves. Groups never merge on their own (`workspace/groups.js`). The bubble is
+  a signed distance field: padded member rectangles, bridges between neighbours, soft joins. It
+  is thin, grey and live, with a matching zone on the floor plan. A selected group can be dragged
+  as one, ungrouped, and given threads.
+- **Search (spec §109–112, redesigned by the user).** The magnifier sits above the +. The bar
+  grows out from its middle at the top centre, with a × beside it. Typing travels the camera to
+  the best match: centred, about 56% of the screen high, and on long journeys the path eases
+  back mid-way to keep its bearings. Nothing dims. Matches rank by field (title and tags over
+  file name and type over notes), then by whole-word matches. "1 of 3" with ⌃ ⌄, Enter or ↓,
+  Shift + Enter or ↑.
+- **Undo / redo (spec §114).** Ctrl / Cmd + Z, Ctrl / Cmd + Shift + Z, Ctrl + Y. A step stores
+  the before and after state of every record it touched (assets, threads, groups). Undo glides
+  items back. Deleted items return from their stored files, with their threads and group.
+  Repeated key presses on one item merge into a single step.
+- **Light files (spec §123).** Photographs over 2000 px (or over 1.2 MB) are stored as WebP web
+  copies, or JPEG where WebP cannot be written. PNGs stay PNG for crisp linework. PDFs get a
+  picture of their first page for their card and their proportions, drawn with pdf.js. That is
+  the only new dependency, loaded as its own chunk only when a PDF needs it. PDFs added earlier
+  get their picture quietly after the workspace opens. The focus view shows the web copy facts
+  and page counts.
+- **Phones and tablets.** On portrait screens the opening view centres the work and the floor
+  reaches out further, so its edge still meets the bottom of the screen. The search bar drops
+  below the title on narrow screens. Swatch rows stay on screen. Threads, groups and pinch all
+  work with touch.
+- **Testing kit:** `06_TESTING/Spatial Archive - testing kit.md` (tasks, observation sheet,
+  post-test questions, User 01 diary, observation → change template).
+
+### Architecture decisions
+
+- Threads, bubbles and the dot glow are drawn in the one WebGL scene and frame loop. Rope physics
+  runs at a fixed 120 Hz step inside the workspace frame. The bubbles' fill sits just behind the
+  cards, so cards cover it.
+- History records whole-record snapshots (structured clones, without `updatedAt`) rather than
+  commands, so grouping side effects and deletions with their threads undo as one step.
+- Grouping runs only when something is put down by hand (drag end, key, depth or turn), never
+  on import. A multi-file drop arranged in rows does not group itself.
+- Reduced motion: threads take their resting curve at once; cut or dropped threads fade
+  without falling; search moves without travel.
+
+### Bugs found and fixed
+
+- Threads did not appear: the ribbon's triangles face away from the camera when a thread runs
+  right to left, and were culled. *Fix:* double-sided.
+- pdf.js's page drawing waits for animation frames, which a background tab never gets, so a PDF
+  added while the tab was hidden never finished. *Fix:* the print intent, which draws in one go.
+- pdf.js 6 has no `PDFDocumentProxy.destroy()`, and the error in `finally` made the whole drop
+  fail silently. *Fix:* destroy the loading task.
+- Group bubbles bulged where neighbours met: the polynomial smooth-min with a large radius
+  overshoots. *Fix:* explicit bridges between neighbours and a small smoothing radius.
+- The thread pill sat on the thread's lowest point, which can be an end over a card. *Fix:* it
+  sits by the middle of the thread, below or above, wherever it covers fewer cards.
+
+### Not done yet
+
+- The Luxury Apartment demo content and a way to ship it with the hosted site (left to the user
+  for now).
+- Tying threads from the keyboard (threads can be selected, recoloured and cut from the
+  keyboard; tying needs a pointer).
+- Milestone screenshots for the portfolio (§133, §151).
+
+---
+
+## 2026-10-07 — Brief audit: what is still missing
+
+The full brief (task brief + master specification §00–§170) re-read against the build.
+
+### Missing
+
+- **Proximity grouping** (Priority 4, §103–106): soft boundary, leaving by moving away, a
+  connection node on the group. The `groups` store exists; nothing uses it yet.
+- **Connections** (Priority 5, §100–102, §118): top-centre node on the selected item, thin lines
+  stored by asset ID. The `connections` store exists; nothing uses it yet.
+- **Search** (Priority 7, §87, §109–112): magnifier at top-centre; matches come forward, others
+  recede and dim; clearing restores everything. Title, filename, tags, notes and type are stored.
+- **Undo / redo** (§114): Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z.
+- **A demo corpus that ships with the site** (§121–124, Output 2): workspaces live in each
+  browser's IndexedDB, so on GitHub Pages every visitor opens an empty Luxury Apartment. Needs
+  the files plus a metadata list in `public/assets/demo/`, loaded on first open, and a bulk
+  import that reads titles, tags and notes.
+
+### Partial
+
+- PDF cards are typographic, with no first-page preview (§92, §123); it would need a PDF library.
+- Images are stored at full size; no web versions (WebP, ~2000 px long edge) on import (§123).
+- Tablet and touch not re-checked since the workspace became a volume.
+- Milestone screenshots (§133, §151): `05_ITERATIONS/` holds source snapshots only.
+- SketchUp conversion only runs on the dev server (it uses the local SketchUp install), so the
+  hosted build accepts the other model formats but not `.skp`.
+
+### Outside the code
+
+- User testing (§125–132), at least one testing-driven change (§162), the final video (§136),
+  storyboard and model A/B/C diagrams, the case study (§140–143), Git checkpoints (§135).
+
+### Changed on purpose (user direction)
+
+- Black space / white ink instead of the warm off-white palette (§23).
+- Dust transitions and the "zoom in to start" hint, where the brief ruled out particles and
+  arrows (§24, §27).
+- Scroll up zooms in, scroll down zooms out; the brief let both directions enter (§48).
+- The Create form swishes out of the plus.
+- 3D models and SketchUp files, which the brief left for later (§91).
+- The + sits above Home instead of top-left (§87).
+
+---
+
 ## 2026-10-06 — Opening a workspace: the glitch fixed
 
 **Report (user):** opening a project "looks like it's glitching", perhaps because of loading.

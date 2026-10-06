@@ -72,7 +72,7 @@ function material(opacity) {
 }
 
 // Layers of grid drawn in front of layer 0, so the floor can reach towards the camera.
-const FRONT_LAYERS = 8
+const FRONT_LAYERS = FLOOR.frontLayers
 
 // Static grid in local space (floor at y = 0, layer 0 at z = 0). Lines running back are
 // split per layer so the per-vertex distance fade follows the depth smoothly.

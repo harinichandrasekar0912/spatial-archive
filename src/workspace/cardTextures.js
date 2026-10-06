@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { THEME } from '../app/constants.js'
+import { NOTE_COLORS, THEME } from '../app/constants.js'
 import { loadImage } from '../utils/image.js'
 
 /*
@@ -16,7 +16,10 @@ const TEXT_DENSITY = 2.5
 const MAX_TEXTURE_EDGE = 2048
 const MAX_IMAGE_EDGE = 1024
 
-export const NOTE_STYLE = { fontSize: 14, lineHeight: 21, paddingX: 18, paddingY: 16, background: THEME.noteSurface }
+export const NOTE_STYLE = { fontSize: 14, lineHeight: 21, paddingX: 18, paddingY: 16 }
+
+// A note's colours (surface, ink, placeholder, edge) from its colour id.
+export const noteColor = (id) => NOTE_COLORS.find((color) => color.id === id) || NOTE_COLORS[0]
 export const CAPTION_HEIGHT_PX = 18
 
 // Shadow texture: the card occupies the central SHADOW_INNER of the texture.
@@ -133,8 +136,8 @@ function drawLines(context, lines, { x, y, lineHeight, maxLines, maxWidth }) {
 
 // Dark cards need a hairline so their edge reads against the black space. The card shader
 // rounds the corners, so the stroke follows the same rounded rectangle.
-function strokeEdge(context, record) {
-  context.strokeStyle = THEME.hairline
+function strokeEdge(context, record, color = THEME.hairline) {
+  context.strokeStyle = color
   context.lineWidth = 1.5
   context.beginPath()
   context.roundRect(0.75, 0.75, record.width - 1.5, record.height - 1.5, 13)
@@ -143,14 +146,15 @@ function strokeEdge(context, record) {
 
 export function createNoteTexture(record) {
   const { canvas, context } = cardCanvas(record.width, record.height)
-  const { fontSize, lineHeight, paddingX, paddingY, background } = NOTE_STYLE
+  const { fontSize, lineHeight, paddingX, paddingY } = NOTE_STYLE
+  const colors = noteColor(record.color)
   const hasText = record.notes.trim().length > 0
 
-  context.fillStyle = background
+  context.fillStyle = colors.surface
   context.fillRect(0, 0, record.width, record.height)
-  strokeEdge(context, record)
+  strokeEdge(context, record, colors.edge)
   context.font = `${fontSize}px ${FONT_FAMILY}`
-  context.fillStyle = hasText ? INK : MUTED
+  context.fillStyle = hasText ? colors.ink : colors.muted
 
   const maxWidth = record.width - paddingX * 2
   // Half-leading so the first baseline matches a CSS line-height of 1.5.

@@ -127,14 +127,14 @@ export function createWorkspaceScene(spatial, { onModelMeasured = () => {} } = {
     }
 
     if (record.type === 'pdf') {
-      return createPdfTexture(record)
+      return entry.imageTexture || createPdfTexture(record)
     }
 
     return entry.imageTexture || createPlaceholderTexture()
   }
 
   function textKey(record) {
-    return record.type === 'note' ? `${record.notes}|${record.width}|${record.height}` : `${record.title}|${record.filename}|${record.width}|${record.height}`
+    return record.type === 'note' ? `${record.notes}|${record.width}|${record.height}|${record.color}` : `${record.title}|${record.filename}|${record.width}|${record.height}`
   }
 
   function replaceCardTexture(entry, texture) {
@@ -163,6 +163,31 @@ export function createWorkspaceScene(spatial, { onModelMeasured = () => {} } = {
 
     entry.caption.scale.set(toWorldLength(record.width), toWorldLength(CAPTION_HEIGHT_PX), 1)
     entry.caption.position.set(0, -toWorldLength(record.height / 2 + CAPTION_GAP_PX + CAPTION_HEIGHT_PX / 2), 0.001)
+  }
+
+  // An image (or a PDF's first-page picture) becomes the card's face once it has loaded.
+  function loadFace(entry, record, url) {
+    track(
+      createImageTexture(url, { aspect: record.width / Math.max(1, record.height) })
+        .then((texture) => {
+          if (entries.get(record.id) !== entry) {
+            disposeTexture(texture)
+            return
+          }
+
+          const previous = entry.imageTexture
+          entry.imageTexture = texture
+          replaceCardTexture(entry, texture)
+          disposeTexture(previous)
+          spatial.requestRender()
+        })
+        .catch(() => {
+          if (record.type === 'image') {
+            replaceCardTexture(entry, createPlaceholderTexture(THEME.placeholderMissing))
+            spatial.requestRender()
+          }
+        }),
+    )
   }
 
   function addCaption(entry) {
@@ -215,23 +240,18 @@ export function createWorkspaceScene(spatial, { onModelMeasured = () => {} } = {
       entries.set(record.id, entry)
 
       if (record.type === 'image' && item.url) {
-        track(
-          createImageTexture(item.url, { aspect: record.width / Math.max(1, record.height) })
-          .then((texture) => {
-            if (entries.get(record.id) !== entry) {
-              disposeTexture(texture)
-              return
-            }
+        loadFace(entry, record, item.url)
+      } else if (record.type === 'pdf' && item.previewUrl) {
+        loadFace(entry, record, item.previewUrl)
+      }
+    },
 
-            entry.imageTexture = texture
-            replaceCardTexture(entry, texture)
-            spatial.requestRender()
-          })
-          .catch(() => {
-            replaceCardTexture(entry, createPlaceholderTexture(THEME.placeholderMissing))
-            spatial.requestRender()
-          }),
-        )
+    // A PDF has just been given its first-page picture.
+    refreshPreview(item) {
+      const entry = entries.get(item.record.id)
+
+      if (entry?.kind === 'card' && item.previewUrl) {
+        loadFace(entry, item.record, item.previewUrl)
       }
     },
 

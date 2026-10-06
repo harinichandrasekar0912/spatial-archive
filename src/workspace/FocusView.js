@@ -57,7 +57,12 @@ export function createFocusView(section, hooks) {
 
   panel.tabIndex = -1
 
+  // What a PDF shows while its reader loads: the picture of its first page, if it has one.
   function placeholderFor(record) {
+    if (item?.previewUrl) {
+      return `<img class="focus-view__page" src="${item.previewUrl}" alt="${escapeHtml(record.title || record.filename)}, first page" draggable="false" />`
+    }
+
     return `<div class="focus-view__document"><span class="asset-card__kind">PDF</span><span>${escapeHtml(record.title || record.filename)}</span></div>`
   }
 
@@ -67,6 +72,21 @@ export function createFocusView(section, hooks) {
     }
 
     return record.type === 'pdf' ? placeholderFor(record) : `<img src="${url}" alt="${escapeHtml(record.title)}" draggable="false" />`
+  }
+
+  // Images stored as web copies, and how many pages a PDF has.
+  function fileFacts(record) {
+    const detail = record.detail
+
+    if (record.type === 'image' && detail?.webCopy) {
+      return `<dt>WEB COPY</dt><dd>${detail.width} × ${detail.height} px, ${megabytes(detail.bytes)} (from ${megabytes(detail.sourceBytes)})</dd>`
+    }
+
+    if (record.type === 'pdf' && detail?.pages) {
+      return `<dt>PAGES</dt><dd>${detail.pages}</dd>`
+    }
+
+    return ''
   }
 
   function formatOf(record) {
@@ -110,7 +130,7 @@ export function createFocusView(section, hooks) {
     facts.innerHTML = `
       <dt>FILE</dt><dd>${escapeHtml(record.filename || '—')}</dd>
       ${isModel() && !record.detail ? `<dt>FORMAT</dt><dd>${escapeHtml(formatOf(record))}</dd>` : ''}
-      ${isModel() ? lightCopyFacts(record.detail) : ''}
+      ${isModel() ? lightCopyFacts(record.detail) : fileFacts(record)}
       <dt>ADDED</dt><dd>${Number.isNaN(added.getTime()) ? '—' : added.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}</dd>
     `
   }
@@ -121,7 +141,8 @@ export function createFocusView(section, hooks) {
     const stacked = width < STACK_BELOW_PX
     const maxWidth = stacked ? width - 48 : Math.min(1200, width - META_WIDTH_PX - GAP_PX - 96)
     const maxHeight = stacked ? height * 0.58 : height - 120
-    const aspect = { pdf: PDF_PAGE_RATIO, model: MODEL_STAGE_RATIO }[item.record.type] || item.record.width / item.record.height
+    const pageRatio = item.previewUrl ? item.record.width / item.record.height : PDF_PAGE_RATIO
+    const aspect = { pdf: pageRatio, model: MODEL_STAGE_RATIO }[item.record.type] || item.record.width / item.record.height
     let mediaWidth = maxWidth
     let mediaHeight = mediaWidth / aspect
 
@@ -180,6 +201,7 @@ export function createFocusView(section, hooks) {
 
   function finishClose({ restoreFocus }) {
     const closed = item
+    hooks.onFinish?.(closed)
     state = 'closed'
     tween = null
     presence = 0

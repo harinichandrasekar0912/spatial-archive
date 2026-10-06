@@ -19,6 +19,6 @@ export default defineConfig({
 
   build: {
     // three.js with the WebGL renderer is ~550 kB minified on its own; the app code is small.
-    chunkSizeWarningLimit: 760,
+    chunkSizeWarningLimit: 840,
   },
 })

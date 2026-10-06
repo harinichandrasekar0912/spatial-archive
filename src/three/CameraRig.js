@@ -62,7 +62,8 @@ export function createCameraRig(camera) {
         if (move.travelKeys.includes(key)) {
           // Reduced motion "jumps" at the midpoint, hidden by a cross-fade.
           const eased = move.jump ? (travelT >= 0.5 ? 1 : 0) : move.ease(travelT)
-          base[key] = lerp(move.from[key], move.to[key], eased)
+          // An optional lift bows the path (e.g. easing back mid-way on a long glide).
+          base[key] = lerp(move.from[key], move.to[key], eased) + (move.lift[key] || 0) * Math.sin(Math.PI * eased)
         } else if (recenterT >= 1) {
           base[key] = move.to[key]
         } else {
@@ -116,8 +117,9 @@ export function createCameraRig(camera) {
      * Choreographed move. Keys listed in travelKeys ease in-out during the travel phase;
      * every other key winds down to its target during the recentre phase, leaving with the
      * camera's current velocity so the hand-off from ambient sway is seamless.
+     * lift: { key: amount } adds amount · sin(π · progress) to a travelling key.
      */
-    startMove({ to, recenterMs = 0, settleMs = 0, travelMs = 0, travelKeys = ['z'], jump = false, ease = easeInOutCubic, now }) {
+    startMove({ to, recenterMs = 0, settleMs = 0, travelMs = 0, travelKeys = ['z'], jump = false, ease = easeInOutCubic, lift = {}, now }) {
       POSE_KEYS.forEach((key) => {
         base[key] = pose[key]
       })
@@ -129,7 +131,7 @@ export function createCameraRig(camera) {
         slopes[key] = velocity[key] * recenterMs
       })
 
-      move = { from: { ...base }, to: { ...base, ...to }, slopes, start: now, recenterMs, settleMs, travelMs, travelKeys, jump, ease }
+      move = { from: { ...base }, to: { ...base, ...to }, slopes, start: now, recenterMs, settleMs, travelMs, travelKeys, jump, ease, lift }
     },
 
     isMoving() {

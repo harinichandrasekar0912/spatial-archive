@@ -212,6 +212,33 @@ export const DOT_FIELD = {
 }
 
 /*
+ * Landing and Projects: dots near the pointer brighten like stars and dim again once it has
+ * passed. The pointer leaves a short trail of fading samples; each dot takes the glow of the
+ * nearest one (see DotField and three/dotGlow.js).
+ */
+export const DOT_GLOW = {
+  // Radius of the glow around the pointer on a 900 px tall screen (scaled with the screen).
+  radiusPx: 150,
+  // Opacity a fully lit dot gains: `boost` on the nearest planes, `farBoost` on the deepest,
+  // so the depth of the field stays legible inside the glow.
+  boost: 0.85,
+  farBoost: 0.42,
+  // A lit dot grows by sizeGain, and tiny far dots grow to at least minSizePx, like small stars.
+  sizeGain: 0.55,
+  minSizePx: 2.6,
+  // How much each dot's own (hashed) brightness varies its response, and a gentle twinkle.
+  starVariance: 0.65,
+  twinkle: 0.22,
+  trailSamples: 6,
+  trailSpacingPx: 18,
+  trailDecayMs: 560,
+  // The glow follows the pointer with this time constant (a touch of easing, no lag).
+  followMs: 40,
+  fadeInMs: 320,
+  fadeOutMs: 700,
+}
+
+/*
  * The workspace is a 3D volume inside the dot field. Layer 0 is the dotted plane at z = -50;
  * layer k sits layerSpacing units further back. Every fourth layer coincides with one of the
  * travel planes (spaced 10 apart), so the volume "fills in" around the existing field.
@@ -257,6 +284,8 @@ export const WORKSPACE = {
   fitMarginPx: 72,
   // Camera distance kept between the camera and the floor's front edge in the opening view.
   entryFloorGap: 4.5,
+  // Screens narrower than this (width / height) frame the work centred (see computeEntryView).
+  portraitBelow: 0.9,
   fitTopPx: 84,
   fitMaxZoom: 1,
   homeMs: 700,
@@ -285,6 +314,8 @@ export const FLOOR = {
   halfWidthSteps: 44,
   lineEverySteps: 2,
   depthLayers: 20,
+  // How far the grid can reach in front of layer 0 (in layers), towards the camera.
+  frontLayers: 12,
   gridOpacity: 0.15,
   footprintOpacity: 0.85,
   footprintThickness: 0.1,
@@ -330,9 +361,130 @@ export const VOLUME = {
   opacityScale: 0.85,
 }
 
+// Web copies of what is added (spec §123): see workspace/webCopies.js.
+export const IMAGE = {
+  webMaxPx: 2000,
+  webQuality: 0.86,
+  jpegQuality: 0.88,
+  // Images already this light (and no larger than webMaxPx) are kept exactly as they are.
+  lightBytes: 1.2 * 1024 * 1024,
+  // A copy is kept only if it is at most this fraction of the original's size.
+  keepBelowRatio: 0.9,
+  // Long edge of the picture of a PDF's first page.
+  pdfPreviewPx: 1200,
+}
+
 // Image / PDF focus view (spec §94–96).
 export const FOCUS_VIEW = {
   durationMs: 560,
   maxBlurPx: 4,
   maxDim: 0.55,
+}
+
+/*
+ * Colours, after Apple's system palette (the familiar sticky-note set: yellow, green, blue,
+ * pink, purple), made very mild for the black space. Values were chosen in OKLCH so every hue
+ * has the same lightness and softness: notes are pale paper tints (L 0.86, C 0.036) written in
+ * dark ink; threads use the same hues one step deeper (L 0.72, C 0.075), so a thread never reads
+ * as a note. The first entry of each list is the default.
+ */
+export const NOTE_COLORS = [
+  { id: 'graphite', label: 'Graphite', surface: THEME.noteSurface, ink: THEME.ink, muted: 'rgba(242, 241, 237, 0.4)', edge: THEME.hairline, swatch: '#2c2c2a' },
+  { id: 'yellow', label: 'Yellow', surface: '#d9d1b7', ink: '#22201b', muted: 'rgba(34, 32, 27, 0.45)', edge: 'rgba(0, 0, 0, 0.06)' },
+  { id: 'green', label: 'Green', surface: '#c1d8c5', ink: '#1b211c', muted: 'rgba(27, 33, 28, 0.45)', edge: 'rgba(0, 0, 0, 0.06)' },
+  { id: 'blue', label: 'Blue', surface: '#bed4e8', ink: '#1a1f25', muted: 'rgba(26, 31, 37, 0.45)', edge: 'rgba(0, 0, 0, 0.06)' },
+  { id: 'pink', label: 'Pink', surface: '#e7c8ce', ink: '#251c1e', muted: 'rgba(37, 28, 30, 0.45)', edge: 'rgba(0, 0, 0, 0.06)' },
+  { id: 'purple', label: 'Purple', surface: '#d4cce6', ink: '#1f1c26', muted: 'rgba(31, 28, 38, 0.45)', edge: 'rgba(0, 0, 0, 0.06)' },
+]
+
+export const THREAD_COLORS = [
+  { id: 'silk', label: 'Silk', color: '#c8c4bc' },
+  { id: 'yellow', label: 'Yellow', color: '#b5a46e' },
+  { id: 'green', label: 'Green', color: '#83b28c' },
+  { id: 'blue', label: 'Blue', color: '#7daad1' },
+  { id: 'pink', label: 'Pink', color: '#ce919e' },
+  { id: 'purple', label: 'Purple', color: '#ac9acd' },
+]
+
+/*
+ * Threads (connections, spec §100–102): a slightly loose thread hung between two things, pulled
+ * into a shallow curve by gravity (a small rope simulation), with tiny gold specks along it.
+ */
+export const THREAD = {
+  // Points along each thread (the rope simulation's resolution).
+  points: 28,
+  // How much longer than the straight line a thread is: a little slack, a little more for
+  // short threads so they still visibly hang.
+  slack: 1.014,
+  shortSlack: 0.022,
+  shortLength: 6,
+  gravity: 9.5,
+  damping: 0.982,
+  iterations: 18,
+  stepMs: 1000 / 120,
+  // Thickness in world units, kept between these sizes on screen.
+  width: 0.016,
+  minWidthPx: 1.1,
+  maxWidthPx: 3.2,
+  // Where a thread is tied: the top-centre of an item, slightly in front of its face.
+  anchorLift: 0.012,
+  anchorFront: 0.03,
+  // Gold specks: about this many per world unit of thread.
+  specksPerUnit: 9,
+  maxSpecks: 180,
+  speckColor: '#d6a240',
+  speckLight: '#ffe9ad',
+  // Picking a thread with the pointer, in screen pixels.
+  pickPx: 7,
+  fadeMs: 320,
+  // A thread dropped without a target falls, settles, then fades.
+  dropFadeDelayMs: 650,
+  dropFadeMs: 450,
+}
+
+/*
+ * Proximity grouping (spec §103–106). Things placed close together on the same layer form a
+ * soft group, drawn as a thin bubble around them (and a matching zone on the floor). Distances
+ * are gaps between items' edges in world units (128 workspace px each); leaving takes a wider
+ * gap than joining, so a group never flickers at its edge.
+ */
+export const GROUP = {
+  joinGap: 0.45,
+  leaveGap: 0.9,
+  // The bubble: how far it stands off the items, how softly its joins are rounded, and its
+  // corner radius.
+  padding: 0.22,
+  smoothing: 0.08,
+  radius: 0.2,
+  outlineOpacity: 0.36,
+  fillOpacity: 0.035,
+  floorOutlineOpacity: 0.42,
+  floorFillOpacity: 0.05,
+  // Items per group drawn exactly (beyond this the bubble uses their overall extent).
+  maxMembers: 24,
+  fadeMs: 360,
+}
+
+// Undo / redo (spec §114).
+export const HISTORY = {
+  limit: 200,
+  // Repeated key presses on one item (nudges, layer steps, turns) within this time are one step.
+  coalesceMs: 900,
+  // How long an undone change takes to glide back into place.
+  morphMs: 280,
+}
+
+// Search (spec §109–112, redesigned): the camera glides to the match so it takes centre stage.
+export const SEARCH = {
+  debounceMs: 300,
+  // The match fills about this much of the screen's height (or width, whichever is tighter).
+  fillHeight: 0.56,
+  fillWidth: 0.58,
+  minTravelMs: 750,
+  maxTravelMs: 1700,
+  // On longer journeys the camera eases back a little mid-way to keep its bearings.
+  liftPerUnit: 0.32,
+  maxLift: 7,
+  openMs: 460,
+  closeMs: 300,
 }
