@@ -1,0 +1,569 @@
+/* ── Workspace view ─────────────────────────────────────────────────────────────────── */
+
+.workspace {
+  visibility: hidden;
+}
+
+.workspace.is-visible {
+  visibility: visible;
+}
+
+/* Pointer surface over the WebGL volume; also hosts the constant-size overlays. */
+.workspace-canvas {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  outline: none;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.workspace:not(.is-interactive) .workspace-canvas,
+.workspace:not(.is-interactive) .workspace-chrome {
+  pointer-events: none;
+}
+
+.workspace-canvas.is-over-card {
+  cursor: grab;
+}
+
+/* The turn dial on the floor: drag sideways to turn the selected item. */
+.workspace-canvas.is-over-dial,
+.workspace-canvas.is-turning {
+  cursor: ew-resize;
+}
+
+.workspace-canvas.is-dragging-card,
+.workspace-canvas.is-panning {
+  cursor: grabbing;
+}
+
+.workspace-canvas.is-tilting {
+  cursor: move;
+}
+
+/* ── Selection controls (constant screen size, placed from the card's projected corners) ── */
+
+.selection {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+}
+
+.selection[hidden],
+.selection [hidden] {
+  display: none;
+}
+
+.selection > * {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+/* Front-facing cards: a rounded rectangle matching the card's corners. */
+.selection__frame {
+  border: 1px solid rgba(242, 241, 237, 0.42);
+  border-radius: var(--corner, 14px);
+}
+
+/* Turned cards: the outline follows the card's perspective shape. */
+.selection__outline {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.selection__outline polygon {
+  fill: none;
+  stroke: rgba(242, 241, 237, 0.42);
+  stroke-width: 1;
+  stroke-linejoin: round;
+}
+
+.selection__delete {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--surface-glass);
+  box-shadow: 0 0 0 1px var(--hairline), 0 1px 4px rgba(0, 0, 0, 0.5);
+  color: rgba(242, 241, 237, 0.78);
+  pointer-events: auto;
+}
+
+.selection__delete svg {
+  width: 13px;
+  height: 13px;
+}
+
+.selection__delete:hover {
+  color: var(--ink);
+}
+
+/* Depth readout + steppers. */
+.selection__depth {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 4px;
+  border-radius: 999px;
+  background: var(--surface-glass);
+  box-shadow: 0 0 0 1px var(--hairline), 0 1px 4px rgba(0, 0, 0, 0.45);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  white-space: nowrap;
+  color: rgba(242, 241, 237, 0.7);
+  pointer-events: auto;
+}
+
+.selection__depth span {
+  padding: 0 3px;
+}
+
+.selection__depth button {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  color: rgba(242, 241, 237, 0.7);
+  transition: color 160ms ease;
+}
+
+.selection__depth button:hover {
+  color: var(--ink);
+}
+
+/* Resize: a quarter-circle arc concentric with the card's rounded corner (spec §98). */
+.selection__resize {
+  width: var(--arc, 23px);
+  height: var(--arc, 23px);
+  border-right: 1.5px solid rgba(242, 241, 237, 0.6);
+  border-bottom: 1.5px solid rgba(242, 241, 237, 0.6);
+  border-bottom-right-radius: var(--arc, 23px);
+  cursor: nwse-resize;
+  pointer-events: auto;
+}
+
+/* Larger invisible hit area around the arc. */
+.selection__resize::before {
+  content: '';
+  position: absolute;
+  inset: -8px;
+}
+
+/* ── Depth guide: the card's lattice column during depth changes ────────────────────── */
+
+.depth-guide {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.depth-guide[hidden] {
+  display: none;
+}
+
+.depth-guide__dot {
+  position: absolute;
+  top: -2.5px;
+  left: -2.5px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: rgba(242, 241, 237, 0.35);
+}
+
+.depth-guide__dot.is-current {
+  top: -4.5px;
+  left: -4.5px;
+  width: 9px;
+  height: 9px;
+  border: 1.5px solid rgba(242, 241, 237, 0.85);
+  background: var(--surface-glass);
+}
+
+.depth-guide__label {
+  position: absolute;
+  top: 0;
+  left: 0;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--surface-glass);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: rgba(242, 241, 237, 0.75);
+  white-space: nowrap;
+}
+
+/* ── Note editing ───────────────────────────────────────────────────────────────────── */
+
+.note-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+}
+
+/* Matches the note texture: 14 px text, 1.5 line height, 16 / 18 px padding. */
+.note-editor {
+  position: absolute;
+  top: 0;
+  left: 0;
+  padding: 16px 18px;
+  border: 0;
+  background: #151514;
+  box-shadow: 0 0 0 1px rgba(242, 241, 237, 0.35);
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink);
+  outline: none;
+  resize: none;
+  transform-origin: 0 0;
+  pointer-events: auto;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.note-editor::placeholder {
+  color: rgba(242, 241, 237, 0.42);
+}
+
+/* ── Chrome ─────────────────────────────────────────────────────────────────────────── */
+
+.workspace-chrome {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.workspace-chrome button {
+  pointer-events: auto;
+}
+
+.workspace-title {
+  top: calc(var(--ws-edge) + 1.3rem);
+  left: var(--ws-edge);
+  max-width: calc(100vw - 2 * var(--ws-edge) - 64px);
+  overflow: hidden;
+  font-size: var(--ws-title-size);
+  letter-spacing: -0.03em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-transform: none;
+}
+
+/* The brand moves into the corner with the workspace (switched while it is faded out). */
+.brand[data-place='workspace'] {
+  top: var(--ws-edge);
+  left: var(--ws-edge);
+}
+
+.chrome-button {
+  display: inline-grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  color: rgba(242, 241, 237, 0.8);
+  transition:
+    color 200ms ease,
+    background-color 200ms ease;
+}
+
+.chrome-button:hover {
+  color: var(--ink);
+  background: rgba(242, 241, 237, 0.045);
+}
+
+.chrome-button svg {
+  transition: transform 260ms var(--ease-out);
+}
+
+/* Chrome buttons are 40px with the glyph centred, so they sit 10px outside the edge line. */
+.add-control {
+  position: absolute;
+  bottom: calc(var(--ws-edge) - 10px + 46px);
+  left: calc(var(--ws-edge) - 10px);
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+[data-action='toggle-add-menu'].is-open svg {
+  transform: rotate(45deg);
+}
+
+.add-menu {
+  display: flex;
+  gap: 0.15rem;
+  animation: menu-in 180ms var(--ease-out);
+}
+
+.add-menu[hidden] {
+  display: none;
+}
+
+.add-menu__item {
+  padding: 0.55rem 0.8rem;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  letter-spacing: 0.14em;
+  color: rgba(242, 241, 237, 0.78);
+  transition:
+    color 200ms ease,
+    background-color 200ms ease;
+}
+
+.add-menu__item:hover {
+  color: var(--ink);
+  background: rgba(242, 241, 237, 0.05);
+}
+
+@keyframes menu-in {
+  from {
+    opacity: 0;
+    transform: translateX(-4px);
+  }
+}
+
+.workspace-close {
+  position: absolute;
+  top: calc(var(--ws-edge) - 10px);
+  right: calc(var(--ws-edge) - 10px);
+}
+
+.workspace-home {
+  position: absolute;
+  bottom: calc(var(--ws-edge) - 10px);
+  left: calc(var(--ws-edge) - 10px);
+}
+
+.workspace-empty {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  margin: 0;
+  font-size: 0.9rem;
+  color: rgba(242, 241, 237, 0.5);
+  text-align: center;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.workspace-empty[hidden],
+.workspace-status[hidden] {
+  display: none;
+}
+
+.workspace-status {
+  position: absolute;
+  bottom: clamp(1.5rem, 4vh, 2.5rem);
+  left: 50%;
+  max-width: min(640px, calc(100vw - 8rem));
+  margin: 0;
+  padding: 0.55rem 1rem;
+  border-radius: 999px;
+  background: var(--surface-glass);
+  box-shadow: 0 0 0 1px var(--hairline);
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: var(--ink-soft);
+  text-align: center;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.workspace.is-drop-target .workspace-canvas::after {
+  content: '';
+  position: absolute;
+  inset: 14px;
+  border: 1px dashed rgba(242, 241, 237, 0.28);
+  border-radius: 22px;
+  pointer-events: none;
+}
+
+/* ── Focus view ─────────────────────────────────────────────────────────────────────── */
+
+.focus-view {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  visibility: hidden;
+}
+
+.focus-view.is-visible {
+  visibility: visible;
+}
+
+.focus-view__backdrop {
+  position: absolute;
+  inset: 0;
+}
+
+.focus-view__panel {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  outline: none;
+  will-change: transform;
+}
+
+.focus-view__media {
+  position: relative;
+  flex: none;
+  overflow: hidden;
+  background: var(--surface);
+  box-shadow: 0 28px 70px rgba(0, 0, 0, 0.6);
+}
+
+.focus-view__media img,
+.focus-view__media iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+.focus-view__media img {
+  object-fit: contain;
+}
+
+.focus-view__stage {
+  position: absolute;
+  inset: 0;
+}
+
+.focus-view__stage canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+  touch-action: none;
+}
+
+.focus-view__stage canvas:active {
+  cursor: grabbing;
+}
+
+.focus-view__stage-hint {
+  position: absolute;
+  left: 1.1rem;
+  bottom: 0.9rem;
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--ink-muted);
+  pointer-events: none;
+}
+
+.segmented {
+  display: inline-flex;
+  align-self: flex-start;
+  padding: 3px;
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.segmented button {
+  padding: 0.4rem 0.85rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  color: var(--ink-muted);
+  transition: color 160ms ease, background-color 160ms ease;
+}
+
+.segmented button:hover {
+  color: var(--ink);
+}
+
+.segmented button[aria-pressed='true'] {
+  background: var(--ink);
+  color: var(--bg);
+}
+
+.focus-view__document {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 32px;
+  border: 1px solid rgba(242, 241, 237, 0.06);
+  background: #131312;
+  font-size: 22px;
+  letter-spacing: -0.03em;
+}
+
+.focus-view__document .asset-card__kind {
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  color: rgba(242, 241, 237, 0.55);
+}
+
+.focus-view__meta {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 1rem;
+  width: 300px;
+  padding: 1.25rem;
+  border-radius: 18px;
+  background: var(--surface-glass);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+}
+
+.focus-view__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.focus-view__type {
+  margin: 0;
+  font-size: 0.7rem;
+  letter-spacing: 0.14em;
+  color: var(--ink-muted);
+}
+
+.focus-view__facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.35rem 1rem;
+  margin: 0.25rem 0 0;
+  font-size: 0.78rem;
+  color: rgba(242, 241, 237, 0.62);
+}
+
+.focus-view__facts dt {
+  font-size: 0.66rem;
+  letter-spacing: 0.1em;
+}
+
+.focus-view__facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.focus-view.is-stacked .focus-view__panel {
+  flex-direction: column;
+  gap: 20px;
+  max-height: 100%;
+  padding: 24px 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.focus-view.is-stacked .focus-view__meta {
+  width: min(100%, calc(100vw - 48px));
+}

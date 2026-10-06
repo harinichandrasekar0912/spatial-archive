@@ -1,51 +1,19 @@
 import * as THREE from 'three'
-import { buildDotField } from './DotField.js'
+import { CAMERA } from '../app/constants.js'
 import { createCameraRig } from './CameraRig.js'
+import { createDotField } from './DotField.js'
 
-export function SpatialScene() {
-  return `
-    <div class="spatial-scene" data-spatial-scene aria-label="Spatial archive scene">
-      <div class="scene-glow"></div>
-    </div>
-  `
-}
-
-function clamp(value, min, max) {
-  return Math.min(Math.max(value, min), max)
-}
-
-function easeInOutCubic(value) {
-  if (value < 0.5) {
-    return 4 * value * value * value
-  }
-
-  return 1 - Math.pow(-2 * value + 2, 3) / 2
-}
-
-export function initSpatialScene(root = document.querySelector('#spatial-root'), sceneState = {}) {
-  const mount = root
-
-  if (!mount || mount.dataset.initialized === 'true') {
-    return null
-  }
-
-  mount.dataset.initialized = 'true'
-
-  const debugMode = false
-
-  const sceneShell = document.createElement('div')
-  sceneShell.className = 'spatial-scene'
-  sceneShell.dataset.spatialScene = 'true'
-  sceneShell.setAttribute('aria-label', 'Spatial archive scene')
-
-  const sceneGlow = document.createElement('div')
-  sceneGlow.className = 'scene-glow'
-
+/*
+ * The one persistent Three.js environment. The renderer, camera, scene and dot field are
+ * created once and live for the whole session. This module also owns the app's single
+ * requestAnimationFrame loop: UI controllers register frame hooks instead of running loops
+ * of their own, so camera, DOM and WebGL always update from the same timestamp.
+ */
+export function createSpatialScene(mount, { startZ = 0 } = {}) {
   const canvas = document.createElement('canvas')
   canvas.className = 'spatial-canvas'
-
-  sceneShell.append(sceneGlow, canvas)
-  mount.appendChild(sceneShell)
+  canvas.setAttribute('aria-hidden', 'true')
+  mount.appendChild(canvas)
 
   const renderer = new THREE.WebGLRenderer({
     canvas,
@@ -53,243 +21,140 @@ export function initSpatialScene(root = document.querySelector('#spatial-root'),
     antialias: true,
     powerPreference: 'high-performance',
   })
-
   renderer.setClearColor(0x000000, 0)
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
   renderer.outputColorSpace = THREE.SRGBColorSpace
-  renderer.toneMapping = THREE.ACESFilmicToneMapping
-  renderer.toneMappingExposure = 1.12
+  // No tone mapping: white dots and card colours are shown exactly as specified.
+  renderer.toneMapping = THREE.NoToneMapping
 
   const scene = new THREE.Scene()
-  scene.fog = null
+  const camera = new THREE.PerspectiveCamera(CAMERA.fov, 1, CAMERA.near, CAMERA.far)
+  camera.position.set(0, 0, startZ)
+  camera.updateMatrixWorld()
 
-  const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 200)
-  const startDepth = Number(sceneState.cameraZ ?? 0)
-  camera.position.set(0, 0, startDepth)
-  camera.lookAt(0, 0, -1)
+  const rig = createCameraRig(camera)
+  const dotField = createDotField(scene)
+  const hooks = []
+  // Screen-space layers drawn after the 3D scene (the transition dust).
+  const overlays = []
+  const viewport = { width: 1, height: 1 }
+  let overlayWasActive = false
 
-  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-  const transitionState = {
-    isTransitioning: false,
-    reducedMotion,
-    currentDepth: startDepth,
-    fromDepth: startDepth,
-    targetDepth: startDepth,
-    startTime: 0,
-    duration: reducedMotion ? 900 : 1500,
-    onProgress: null,
-    onComplete: null,
-    currentYaw: 0,
-    fromYaw: 0,
-    targetYaw: 0,
-    currentPitch: 0,
-    fromPitch: 0,
-    targetPitch: 0,
-    targetPositionX: 0,
-    targetPositionY: 0,
-    fromPositionX: 0,
-    fromPositionY: 0,
-    ambientStrength: 0,
-    ambientStrengthTarget: 1,
-    maxYaw: 0.0125,
-    maxPitch: 0.0022,
-    ambientSpeed: 0.38,
-    ambientPitchSpeed: 0.22,
-    recenterDuration: reducedMotion ? 260 : 600,
-    microSettle: reducedMotion ? 30 : 100,
-  }
+  const lastMatrix = new Float64Array(16)
+  let lastDotKey = ''
+  let forceRender = true
+  let frameId = null
 
-  const introState = {
-    startedAt: performance.now(),
-    duration: reducedMotion ? 420 : 1100,
-  }
-
-  const { layers } = buildDotField({ layers: 8, spread: 150, step: 1.25, debugMode })
-  const layeringSpacing = 10
-  const layerMeshes = layers
-    .map(({ positions, colors, opacity, size, depth: localDepth }) => {
-      const geometry = new THREE.BufferGeometry()
-      geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
-      geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3))
-
-      const material = new THREE.PointsMaterial({
-        size,
-        color: 0x666666,
-        transparent: true,
-        opacity,
-        vertexColors: false,
-        depthWrite: false,
-        sizeAttenuation: true,
-      })
-
-      const dots = new THREE.Points(geometry, material)
-      dots.position.z = localDepth
-      scene.add(dots)
-
-      return {
-        geometry,
-        material,
-        dots,
-        depth: localDepth,
-        baseOpacity: opacity,
-        baseSize: size,
-      }
-    })
-    .sort((a, b) => a.depth - b.depth)
-
-  const cameraRig = createCameraRig(camera, transitionState)
-  const clock = new THREE.Clock()
-  let animationFrameId = null
-
-  const resize = () => {
-    const { width, height } = mount.getBoundingClientRect()
-
-    renderer.setSize(width, height, false)
-    camera.aspect = width / (height || 1)
+  function resize() {
+    viewport.width = window.innerWidth
+    viewport.height = window.innerHeight
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, CAMERA.maxPixelRatio))
+    renderer.setSize(viewport.width, viewport.height, false)
+    dotField.setPixelScale(renderer.getPixelRatio() * viewport.height * 0.5)
+    camera.aspect = viewport.width / Math.max(1, viewport.height)
     camera.updateProjectionMatrix()
+    forceRender = true
   }
 
-  let controller
+  // Skip the WebGL draw when neither the camera nor the dot field changed (idle Projects/Workspace).
+  function needsRender() {
+    const elements = camera.matrixWorld.elements
+    let changed = forceRender
 
-  controller = {
-    getCameraDepth() {
-      return camera.position.z
-    },
-    startEntryTransition({ targetZ = transitionState.targetDepth, duration = transitionState.duration, onProgress, onComplete } = {}) {
-      const nextTarget = Number(targetZ)
-
-      if (!Number.isFinite(nextTarget)) {
-        return
+    for (let index = 0; index < 16; index += 1) {
+      if (elements[index] !== lastMatrix[index]) {
+        lastMatrix[index] = elements[index]
+        changed = true
       }
+    }
 
-      transitionState.fromDepth = camera.position.z
-      transitionState.fromYaw = camera.rotation.y
-      transitionState.fromPitch = camera.rotation.x
-      transitionState.fromPositionX = camera.position.x
-      transitionState.fromPositionY = camera.position.y
-      transitionState.targetDepth = nextTarget
-      transitionState.targetYaw = 0
-      transitionState.targetPitch = 0
-      transitionState.targetPositionX = 0
-      transitionState.targetPositionY = 0
-      transitionState.startTime = performance.now()
-      transitionState.duration = Math.max(500, Number(duration) || transitionState.duration)
-      transitionState.onProgress = typeof onProgress === 'function' ? onProgress : null
-      transitionState.onComplete = typeof onComplete === 'function' ? onComplete : null
-      transitionState.recenterDuration = transitionState.reducedMotion ? 260 : 600
-      transitionState.microSettle = transitionState.reducedMotion ? 30 : 100
-      transitionState.ambientStrengthTarget = nextTarget >= 0 ? 1 : 0
-      transitionState.isTransitioning = true
-    },
-    destroy() {
-      window.removeEventListener('resize', resize)
+    const dotKey = dotField.stateKey()
 
-      if (animationFrameId !== null) {
-        cancelAnimationFrame(animationFrameId)
-      }
+    if (dotKey !== lastDotKey) {
+      lastDotKey = dotKey
+      changed = true
+    }
 
-      layerMeshes.forEach(({ geometry, material }) => {
-        geometry.dispose()
-        material.dispose()
-      })
-
-      sceneState.cameraZ = camera.position.z
-      renderer.dispose()
-    },
+    forceRender = false
+    return changed
   }
 
-  resize()
-  window.addEventListener('resize', resize)
+  function frame() {
+    // Schedule first so an exception in one hook cannot stop the loop.
+    frameId = requestAnimationFrame(frame)
+    renderFrame()
+  }
 
-  const animate = () => {
-    const elapsed = clock.getElapsedTime()
+  // One frame of the loop: hooks, dot field, draw (also used to drive frames in tests).
+  function renderFrame() {
+    // One clock for everything: animations record their start times with performance.now().
     const now = performance.now()
 
-    if (!transitionState.isTransitioning) {
-      transitionState.ambientStrengthTarget = 1
+    for (const hook of hooks) {
+      hook(now)
     }
 
-    transitionState.ambientStrength = THREE.MathUtils.lerp(
-      transitionState.ambientStrength,
-      transitionState.ambientStrengthTarget,
-      0.06,
-    )
+    dotField.update(camera)
 
-    if (transitionState.isTransitioning) {
-      const totalTransitionDuration = transitionState.duration + transitionState.recenterDuration + transitionState.microSettle
-      const overallProgress = clamp((now - transitionState.startTime) / totalTransitionDuration, 0, 1)
-      const recenterProgress = clamp((now - transitionState.startTime) / transitionState.recenterDuration, 0, 1)
-      const recenterEndTime = transitionState.startTime + transitionState.recenterDuration
-      const travelStartTime = recenterEndTime + transitionState.microSettle
-      const travelProgress = clamp((now - travelStartTime) / transitionState.duration, 0, 1)
+    const overlayActive = overlays.some((overlay) => overlay.isActive())
 
-      transitionState.travelProgress = travelProgress
+    // An active overlay redraws every frame; one more frame after it ends clears it away.
+    if (needsRender() || overlayActive || overlayWasActive) {
+      renderer.render(scene, camera)
 
-      const recenterEased = easeInOutCubic(recenterProgress)
-      const travelEased = easeInOutCubic(travelProgress)
-
-      transitionState.currentYaw = THREE.MathUtils.lerp(transitionState.fromYaw, transitionState.targetYaw, recenterEased)
-      transitionState.currentPitch = THREE.MathUtils.lerp(transitionState.fromPitch, transitionState.targetPitch, recenterEased)
-      transitionState.positionX = THREE.MathUtils.lerp(transitionState.fromPositionX, transitionState.targetPositionX, recenterEased)
-      transitionState.positionY = THREE.MathUtils.lerp(transitionState.fromPositionY, transitionState.targetPositionY, recenterEased)
-
-      if (now >= travelStartTime) {
-        transitionState.currentDepth = THREE.MathUtils.lerp(transitionState.fromDepth, transitionState.targetDepth, travelEased)
-      } else {
-        transitionState.currentDepth = transitionState.fromDepth
+      if (overlayActive) {
+        renderer.autoClear = false
+        overlays.forEach((overlay) => overlay.isActive() && overlay.render(renderer))
+        renderer.autoClear = true
       }
-
-      transitionState.onProgress?.(travelProgress)
-
-      if (overallProgress >= 1) {
-        transitionState.isTransitioning = false
-        transitionState.currentDepth = transitionState.targetDepth
-        transitionState.currentYaw = transitionState.targetYaw
-        transitionState.currentPitch = transitionState.targetPitch
-        transitionState.positionX = transitionState.targetPositionX
-        transitionState.positionY = transitionState.targetPositionY
-        transitionState.ambientStrength = transitionState.ambientStrengthTarget
-        transitionState.onProgress?.(1)
-        transitionState.onComplete?.()
-      }
-    } else {
-      transitionState.currentDepth = transitionState.targetDepth
-      transitionState.currentYaw = transitionState.targetYaw
-      transitionState.currentPitch = transitionState.targetPitch
-      transitionState.positionX = transitionState.targetPositionX
-      transitionState.positionY = transitionState.targetPositionY
     }
 
-    const orderedLayers = [...layerMeshes].sort((a, b) => a.depth - b.depth)
-    const farthestDepth = orderedLayers[0]?.depth ?? 0
-    const shiftThreshold = camera.position.z + 6
-    let nextDepth = farthestDepth - layeringSpacing
-
-    const introProgress = clamp((performance.now() - introState.startedAt) / introState.duration, 0, 1)
-    const introFade = easeInOutCubic(introProgress)
-
-    for (let index = orderedLayers.length - 1; index >= 0; index -= 1) {
-      const layer = orderedLayers[index]
-
-      if (layer.depth > shiftThreshold) {
-        layer.depth = nextDepth
-        layer.dots.position.z = nextDepth
-        nextDepth -= layeringSpacing
-      }
-
-      const fadeStrength = reducedMotion ? 1 : introFade
-
-      layer.material.opacity = clamp(layer.baseOpacity * fadeStrength, 0.02, layer.baseOpacity)
-      layer.material.size = layer.baseSize
-    }
-
-    cameraRig.update(elapsed)
-    renderer.render(scene, camera)
-
-    animationFrameId = requestAnimationFrame(animate)
+    overlayWasActive = overlayActive
   }
 
-  animate()
+  canvas.addEventListener('webglcontextlost', (event) => event.preventDefault())
+  canvas.addEventListener('webglcontextrestored', () => {
+    forceRender = true
+  })
 
-  return controller
+  window.addEventListener('resize', resize)
+  resize()
+
+  return {
+    camera,
+    rig,
+    dotField,
+    viewport,
+    // The Three.js scene graph and renderer, so the workspace can place cards in the same space.
+    world: scene,
+    renderer,
+    onFrame(hook) {
+      hooks.push(hook)
+    },
+    requestRender() {
+      forceRender = true
+    },
+    renderFrame,
+    addOverlay(overlay) {
+      overlays.push(overlay)
+    },
+    /*
+     * A copy of the current 3D frame (device pixels) for the dust effects. The scene is drawn
+     * and copied in the same task, while the drawing buffer is still intact.
+     */
+    captureFrame() {
+      dotField.update(camera)
+      renderer.render(scene, camera)
+      const copy = document.createElement('canvas')
+      copy.width = canvas.width
+      copy.height = canvas.height
+      copy.getContext('2d').drawImage(canvas, 0, 0)
+      forceRender = true
+      return copy
+    },
+    start() {
+      if (frameId === null) {
+        frameId = requestAnimationFrame(frame)
+      }
+    },
+  }
 }

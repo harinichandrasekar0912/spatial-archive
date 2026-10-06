@@ -2,24 +2,23 @@ import { LandingPage } from '../ui/LandingPage.js'
 import { ProjectsPage } from '../ui/ProjectsPage.js'
 import { WorkspacePage } from '../ui/WorkspacePage.js'
 import { CreateProjectModal } from '../ui/CreateProjectModal.js'
-import { initialState } from './state.js'
-import { loadProjects } from '../data/projects.js'
 
-export function App({ state = initialState, projectList = loadProjects() } = {}) {
-  const selectedProject = projectList.find((project) => project.id === state.selectedProjectId) || null
-  const isProjectsView = state.view === 'projects'
-  const isWorkspaceView = state.view === 'workspace'
-  const isCreateOpen = state.createModalOpen === true
-
+/*
+ * Static application shell, rendered exactly once. Views never replace each other's DOM:
+ * transitions only change transforms and opacity, so there are no flashes or re-mounts.
+ */
+export function App() {
   return `
-    <div class="app-shell ${isProjectsView ? 'is-projects-view' : ''} ${isWorkspaceView ? 'is-workspace-view' : ''} ${isCreateOpen ? 'is-create-modal-open' : ''}">
-      <main class="page-shell">
-        ${LandingPage({ state })}
-        ${ProjectsPage({ projects: projectList })}
-        ${WorkspacePage({ project: selectedProject })}
-      </main>
+    <h1 class="brand" data-brand>SPATIAL ARCHIVE</h1>
 
-      ${CreateProjectModal({ state })}
-    </div>
+    <main class="page-shell" data-page-shell>
+      ${LandingPage()}
+      ${ProjectsPage()}
+      ${WorkspacePage()}
+    </main>
+
+    ${CreateProjectModal()}
+
+    <div class="sr-only" role="status" aria-live="polite" data-announcer></div>
   `
 }
